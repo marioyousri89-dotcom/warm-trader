@@ -1,0 +1,12 @@
+# One-click deploy on Render.com: push this folder to a GitHub repo, then Render > New > Blueprint > pick the repo.
+services:
+  - type: web
+    name: swarm-trader
+    runtime: docker
+    region: singapore        # closest to Melbourne, and Binance's price feed is blocked from some US servers
+    plan: starter            # always-on; the free plan sleeps, which would stop the trading loop
+    healthCheckPath: /
+    disk: {name: brain, mountPath: /data, sizeGB: 1}
+    envVars:
+      - {key: DASHBOARD_TOKEN, generateValue: true}     # your password: Render shows it under Environment
+      - {key: ANTHROPIC_API_KEY, sync: false}           # you paste this in the Render dashboard, never in code
