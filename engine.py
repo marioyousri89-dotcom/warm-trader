@@ -505,6 +505,13 @@ class Engine:
             "daily_briefing": self.b.kv_get("daily_briefing"),
             "dev": {"findings": self.b.kv_get("dev_findings"), "proposals": self.b.kv_get("dev_proposals") or []},
             "desk_log": list(self.desks.log)[-14:][::-1],
+            "decision_desk": {"requests": self.desks.req, "approved": self.desks.yes, "rejected": self.desks.no,
+                              "yes_rate": round(self.desks.yes / self.desks.req, 3) if self.desks.req else None,
+                              "reasons": sorted(self.desks.reasons.items(), key=lambda kv: -kv[1])[:8],
+                              "log": list(self.desks.log)[-25:][::-1],
+                              "session_pnl": round(last_eq - cfg.start_equity, 2),
+                              "note": "Each desk proposes; the risk manager is the single approval layer; "
+                                      "approved trades are paper fills."},
             "hours": hours,
             "top_agents": [slim(a) for a in sorted(ranked, key=lambda a: -a["weight"])[:8]],
             "bottom_agents": [slim(a) for a in sorted(ranked, key=lambda a: a["weight"])[:8]],

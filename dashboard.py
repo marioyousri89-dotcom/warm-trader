@@ -60,6 +60,9 @@ button{background:#21262d;color:var(--tx);border:1px solid var(--line);border-ra
 <div class="card c6"><h2>Polymarket prediction desk (paper money)</h2><div id="poly" class="mut"></div><table id="polyt"></table></div>
 <div class="card c6"><h2>Broker mirrors (demo accounts only)</h2><table id="brk"></table></div>
 <div class="card c12"><h2>Development team: post-mortem and proposals (need your approval)</h2><div id="dev" class="less"></div></div>
+<div class="card c12"><h2>Decision desk: desks propose, the risk manager approves or rejects (paper fills)</h2>
+<div id="dd" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px"></div>
+<div class="mut" id="ddr" style="margin-bottom:6px"></div><div class="less" id="ddl"></div></div>
 <div class="card c12"><h2>Desk log</h2><div class="less" id="dlog"></div></div>
 </main>
 <script>
@@ -113,6 +116,10 @@ const p=s.polybook;if(p){$('poly').textContent='bankroll $'+f(p.equity)+' ('+(p.
 tbl('polyt',['market','side','price','our view'],p.open.map(t=>[t.q,t.side,f(t.price,2),f(t.fair,2)]))}
 tbl('brk',['broker','ready','sent','failed','last'],(s.brokers||[]).map(b=>[b.name,b.ready?'<span class=up>yes</span>':'<span class=mut>no</span>',b.sent,b.failed,b.last]));
 const dv=s.dev||{};$('dev').innerHTML=((dv.findings?'<div><b>Latest post-mortem:</b> '+dv.findings.items.join('; ')+'</div>':'')+(dv.proposals||[]).map(p=>'<div><b>'+p.title+'</b> — '+p.change+' <span class=mut>Test: '+p.test+' ['+p.status+']</span></div>').join(''))||'<span class=mut>Nothing yet.</span>';
+const dd=s.decision_desk;if(dd){const k=(n,l,c)=>'<div><b class="'+(c||'')+'" style="font-size:20px">'+n+'</b><br><span class=mut>'+l+'</span></div>';
+$('dd').innerHTML=k(dd.requests,'proposals')+k(dd.approved,'approved','up')+k(dd.rejected,'rejected','dn')+k(dd.yes_rate==null?'-':f(dd.yes_rate*100,0)+'%','approval rate')+k((dd.session_pnl>=0?'+':'')+f(dd.session_pnl),'session P/L (paper)',cls(dd.session_pnl));
+$('ddr').textContent='Rejected because: '+((dd.reasons||[]).map(r=>r[0]+' ×'+r[1]).join(' · ')||'nothing rejected yet');
+$('ddl').innerHTML=(dd.log||[]).map(e=>'<div><span class=mut>#'+e.cycle+'</span> '+e.desk+' · '+e.symbol+' '+(e.side>0?'LONG':'SHORT')+' → '+(e.result==='OPENED'?'<span class=up>APPROVED</span>':'<span class=dn>REJECTED: '+e.result+'</span>')+' <span class=mut>'+e.reason+'</span></div>').join('')||'<span class=mut>No proposals yet.</span>'}
 $('dlog').innerHTML=(s.desk_log||[]).map(e=>'<div>'+(typeof e==='string'?e:'<span class=mut>#'+e.cycle+'</span> '+e.desk+' '+e.symbol+' '+(e.side>0?'LONG':'SHORT')+' · '+e.result)+'</div>').join('')}
 tick();setInterval(tick,2000);
 </script></body></html>"""

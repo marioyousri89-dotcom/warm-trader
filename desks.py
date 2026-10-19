@@ -20,6 +20,8 @@ class DeskManager:
     def __init__(self, eng):
         self.e = eng
         self.log = deque(maxlen=60)
+        self.req = self.yes = self.no = 0          # decision-desk counters: proposals, approved, rejected
+        self.reasons = {}                           # rejection reason -> count
         self.paused_until = {}
         self.alloc = {}
         self.last_hour_equity = eng.cfg.start_equity
@@ -146,6 +148,12 @@ class DeskManager:
                                       side * it["conf"], it["reason"], it["hold"], risk)
                     opened += 1
                     why = "OPENED"
+                self.req += 1
+                if why == "OPENED":
+                    self.yes += 1
+                else:
+                    self.no += 1
+                    self.reasons[why] = self.reasons.get(why, 0) + 1
                 if why not in ("already in position", "desk position limit"):
                     self.log.append({"cycle": ctx.cycle, "desk": name, "symbol": sym, "side": side, "result": why,
                                      "reason": it["reason"][:90]})
