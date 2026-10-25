@@ -43,6 +43,12 @@ button{background:#21262d;color:var(--tx);border:1px solid var(--line);border-ra
 input{background:var(--bg);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:9px;width:70%;font-size:14px}
 .eng{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
 .eng .card{border-top:3px solid var(--ac)}.eng .n{font-size:28px;color:var(--ac);font-weight:700;float:right}
+.sitemap{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;position:relative}
+.tile:hover{border-color:var(--ac)}.tile h4{margin:0 0 4px;font-size:14px;letter-spacing:.04em}.tile p{margin:0 0 8px;color:var(--mut);font-size:12px}
+.tile .num{position:absolute;top:10px;right:12px;color:var(--mut);font-size:11px}
+.mini{display:flex;flex-wrap:wrap;gap:4px}.mini span{font-size:11px;border:1px solid var(--line);border-left:3px solid var(--ac);border-radius:6px;padding:2px 6px}
+.tile .pl{margin-top:8px;font-size:11px;color:var(--pipe)}
 .page{display:none}.page.on{display:contents}
 .scroll{max-height:520px;overflow:auto}
 @media(max-width:600px){header{padding:10px}main{padding:6px 10px 40px}.clusters{padding:10px}}
@@ -59,6 +65,12 @@ input{background:var(--bg);color:var(--tx);border:1px solid var(--line);border-r
 <div class="desc" id="desc"></div>
 <div class="clusters" id="clusters"></div>
 <main>
+
+<!-- SITE MAP -->
+<section class="page" data-p="map">
+<div class="card c12" style="border-color:var(--pipe)"><h3 class=pp>Market pipe (feeds every page)</h3><div id="mappipe" class="stat"></div></div>
+<div class="c12 sitemap" id="sitemap"></div>
+</section>
 
 <!-- HOME -->
 <section class="page" data-p="home">
@@ -200,6 +212,7 @@ const px=n=>n==null?'-':n>=1000?Number(n).toLocaleString(undefined,{maximumFract
 function tbl(el,head,rows){const e=$(el);if(!e)return;e.innerHTML='<tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr>'+(rows.length?rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join(''):'<tr><td class=mut colspan='+head.length+'>nothing yet</td></tr>')}
 const Q=location.search;
 const PAGES=[
+['map','SITE MAP','Every page of the app, the agent clusters working on each one, and the market pipe that feeds them all. Tap a tile to open it.',[]],
 ['home','HOME','Your paper account at a glance: money, the equity curve, what the chief strategist decided, and the teams.',['scout','analyst','quant','predictor','macro','pipe','desk','improver']],
 ['trades','TRADES','Every open position and every closed paper trade, with the desk that took it and why.',['desk']],
 ['desks','DESKS','Ten trading desks, each with its own style and slice of capital, ranked by profit per hour. Losing desks cool off.',['desk','improver']],
@@ -217,10 +230,10 @@ const PAGES=[
 ['accounts','ACCOUNTS','Demo broker mirrors (off unless you switch them on) and the copy-trading targets, scored for skill versus luck.',['copy','desk']],
 ['manager','MANAGER','Talk to the General Manager by voice or text, get the daily briefing, and use the owner controls.',['improver']],
 ['help','HELP','What everything means.',[]]];
-let S=null,P=null,cur='home',lastPipe=0;
+let S=null,P=null,cur='map',lastPipe=0;
 $('nav').innerHTML=PAGES.map(p=>'<a href="#'+p[0]+'" id="n_'+p[0]+'">'+p[1]+'</a>').join('');
 function go(p){location.hash=p}
-function route(){cur=(location.hash||'#home').slice(1);if(!PAGES.find(p=>p[0]==cur))cur='home';
+function route(){cur=(location.hash||'#map').slice(1);if(!PAGES.find(p=>p[0]==cur))cur='map';
 document.querySelectorAll('.page').forEach(s=>s.classList.toggle('on',s.dataset.p==cur));
 document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+cur));
 const pg=PAGES.find(p=>p[0]==cur);$('desc').innerHTML='<h2>'+pg[1]+'</h2>'+pg[2];
@@ -239,14 +252,14 @@ $('pipebar').innerHTML='<b>MARKET PIPE</b><span><b>'+p.live+'</b> live feeds <sp
 '<span>world '+pct(p.world.risk)+'</span>'+(p.warming_up?'<span class=mut>warming up...</span>':'')}
 
 async function tick(){try{S=await (await fetch('/api/state'+Q)).json();head();render()}catch(e){}}
-async function loadPipe(){try{P=await (await fetch('/api/pipe'+Q)).json();lastPipe=Date.now();render()}catch(e){}}
+async function loadPipe(){try{const j=await (await fetch('/api/pipe'+Q)).json();if(!j.providers)return;P=j;lastPipe=Date.now();render()}catch(e){}}
 function head(){const s=S;$('eq').textContent='$'+f(s.equity);$('pnl').innerHTML='<span class='+cls(s.pnl)+'>'+(s.pnl>=0?'+':'')+f(s.pnl)+'</span>';
 $('ddk').textContent=f(s.drawdown*100,1)+'%';$('tr').textContent=s.totals.trades+' / '+(s.totals.win_rate==null?'-':f(s.totals.win_rate*100,0)+'%');
 $('cy').textContent=s.cycle;$('mode').textContent=s.phase+' · '+s.mode;
 const l=$('llm');l.textContent=s.llm.on?'Claude ON · '+s.llm.calls+' calls':'Claude OFF (no API key)';l.className='chip '+(s.llm.on?'on':'');
 const r=$('risk');r.textContent=s.halted?'KILL SWITCH: '+s.halt_reason:s.day_blocked?'daily limit reached':s.paused?'PAUSED':'risk manager OK';r.className='chip '+(s.halted||s.day_blocked?'bad':'on')}
 
-function render(){if(!S)return;clusters();pipebar();const s=S;try{({home,trades,desks,decision,matrix,brain,flow,pipe:renderPipe,crypto,world,news,poly,engines,academy,accounts,manager,help}[cur]||(()=>{}))()}catch(e){console.log(e)}}
+function render(){if(!S)return;clusters();pipebar();const s=S;try{({map:sitemap,home,trades,desks,decision,matrix,brain,flow,pipe:renderPipe,crypto,world,news,poly,engines,academy,accounts,manager,help}[cur]||(()=>{}))()}catch(e){console.log(e)}}
 
 function chart(pts,start){const c=$('ch'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=440;x.clearRect(0,0,c.width,c.height);if(pts.length<2)return;
 const ys=pts.map(p=>p[1]).concat([start]),lo=Math.min(...ys),hi=Math.max(...ys),pad=(hi-lo)*.1||1,W=c.width,H=c.height;
@@ -258,6 +271,11 @@ const groupsHTML=s=>s.groups.map(g=>'<div class=g><small>'+g.group+'</small><b>'
 const openRows=s=>s.open_trades.map(t=>[esc(t.desk),t.symbol,side(t.side),px(t.entry),px(t.stop),px(t.target),'<span class=mut>'+esc(t.reason).slice(0,60)+'</span>']);
 const hourRows=s=>(s.hours||[]).slice().reverse().map(h=>[h.hour,'<span class='+cls(h.pnl)+'>'+f(h.pnl)+'</span>',esc(h.best_desk||'')]);
 
+const PIPEUSE={home:'pipe bar + market note',trades:'pipe bar',desks:'pipe bar',decision:'pipe bar',matrix:'pipe price, sources, 24h per market',brain:'pipe agents in the brain',flow:'funding, premium, exchange spread',pipe:'every provider and feed',crypto:'60-coin consensus, stocks',world:'indices, FX, commodities, on-chain',news:'all news feeds + mood',poly:'Polymarket, Kalshi, Manifold odds',engines:'SCAN engine = pipe',academy:'pipe bar',accounts:'pipe bar',manager:'manager reads the pipe summary',help:'explains the pipe'};
+function sitemap(){const s=S,p=s.pipe||{},G=g=>(s.groups.find(x=>x.group==g)||{});
+$('mappipe').innerHTML=p.live==null?'<span class=mut>pipe off</span>':'<div><b class="big pp">'+p.live+'</b><span>live feeds</span></div><div><b class=big>'+p.providers_ok+'/'+p.providers+'</b><span>providers OK</span></div>'+Object.entries(p.by_cat||{}).map(([k,v])=>'<div><b class=big>'+v+'</b><span>'+k+'</span></div>').join('');
+$('sitemap').innerHTML=PAGES.filter(x=>x[0]!='map').map((x,i)=>'<div class=tile onclick="go(\''+x[0]+'\')"><span class=num>'+(i+1)+'</span><h4>'+x[1]+'</h4><p>'+esc(x[2]).slice(0,110)+(x[2].length>110?'…':'')+'</p><div class=mini>'+
+(x[3].length?x[3].map(g=>'<span>'+g+' <b>'+(G(g).active||0)+'</b></span>').join(''):'<span class=mut>no agents</span>')+'</div><div class=pl>◆ pipe: '+esc(PIPEUSE[x[0]]||'pipe bar')+'</div></div>').join('')}
 function home(){const s=S;chart(s.equity_curve,s.start);
 $('note').textContent=s.note||(s.llm.on?'(waiting for a strong enough signal)':'Claude is off: decisions are pure quant votes.');
 $('dec').innerHTML=s.decisions.map(d=>'<div><b>'+d.symbol+'</b> quant '+f(d.quant,2)+' → '+f(d.final,2)+(d.claude?' · Claude '+esc(d.claude):'')+' · <span class=mut>'+esc(d.result)+'</span></div>').join('');
