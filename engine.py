@@ -68,7 +68,20 @@ class Engine:
         self.cfg = cfg
         self.live = live
         self.b = Brain(cfg.db_path, cfg.keep_brain)
-        self.market = LiveMarket(cfg.symbols) if live else SimMarket(cfg.symbols, cfg.seed)
+        self.market_note = ""
+        if live:
+            try:
+                self.market = LiveMarket(cfg.symbols)
+                self.market_note = "live prices from " + self.market.source
+            except Exception as e:                      # every exchange refused us: keep running on the simulator
+                live = False
+                self.market_note = f"live prices unavailable ({str(e)[:100]}); running on the simulated market"
+                print("[live]", self.market_note)
+        self.live = live
+        if not live:
+            self.market = SimMarket(cfg.symbols, cfg.seed)
+            self.market_note = self.market_note or "simulated market"
+        self.pipe = None                    # the MARKET PIPE (set by main); every page reads it
         self.traders = None if live else SimTraders(self.b, self.market, cfg.seed + 4)
         self.swarm = Swarm(cfg, self.b)
         self.agg, self.risk, self.port = Aggregator(), Risk(cfg), Portfolio(cfg, self.b)
@@ -242,7 +255,7 @@ class Engine:
         bad = []
         for name, (hits, n) in sw.exam.items():
             a = sw.agents.get(name)
-            if a and a["grp"] in ("scout", "predictor", "copy", "macro", "platform") and n >= 30:
+            if a and a["grp"] in ("scout", "predictor", "copy", "macro", "platform", "pipe") and n >= 30:
                 if hits / n < 0.5 - 1.64 * 0.5 / math.sqrt(n / 3):
                     bad.append(name)
         lens = {}
@@ -301,6 +314,11 @@ class Engine:
             self.macro.update(c, m)
             self.swarm.run_macro(c, m, self.macro)
             self.poly.step(c, m, self.macro)
+        if self.pipe and self.live and self.phase == "live" and c % 15 == 0:
+            try:
+                self.swarm.run_pipe(c, m, self.pipe.signals(m.symbols))
+            except Exception as e:
+                self.b.add_lesson(c, "market_pipe", f"pipe signals failed: {str(e)[:120]}")
         with self.ext_lock:
             items, self.ext_queue = self.ext_queue, []
         if items:
@@ -431,7 +449,8 @@ class Engine:
                 "lessons": [{"by": l["author"], "text": l["text"]} for l in s["lessons"][:8]], "regimes": s["regimes"],
                 "settings": s["settings"], "exam": s["graduation"], "macro": s["macro"], "polymarket_desk": s["polybook"],
                 "brokers": s["brokers"], "dev_findings": s["dev"]["findings"], "dev_proposals": s["dev"]["proposals"][:5],
-                "session": s["session"], "chief_note": s["note"], "claude_working": self.llm.on}
+                "session": s["session"], "chief_note": s["note"], "claude_working": self.llm.on,
+                "market_pipe": s["pipe"]}
 
     def ask(self, question, briefing=False):
         """The General Manager: talks to the owner (typed or by voice), explains results, and discusses how to develop
@@ -477,7 +496,7 @@ class Engine:
             groups.append({"group": g, "active": len(act), "total": len(rows),
                            "avg_acc": round(mean([a["acc"] for a in rated]), 3) if rated else None,
                            "avg_weight": round(mean([a["weight"] for a in act]), 2) if act else None})
-        ranked = [a for a in agents if a["active"] and a["n"] >= 10 and a["grp"] in ("scout", "predictor", "copy", "macro", "platform")]
+        ranked = [a for a in agents if a["active"] and a["n"] >= 10 and a["grp"] in ("scout", "predictor", "copy", "macro", "platform", "pipe")]
         slim = lambda a: {"name": a["name"], "grp": a["grp"], "acc": round(a["acc"], 3), "n": a["n"], "weight": round(a["weight"], 2)}
         tot = b.q("SELECT COUNT(*) n, COALESCE(SUM(pnl>0),0) w, COALESCE(SUM(pnl),0) p FROM trades WHERE status='closed'")[0]
         cyc = m.cycle
@@ -487,7 +506,10 @@ class Engine:
         hours = b.q("SELECT hour,cycle,ROUND(pnl,2) pnl,ROUND(equity,2) equity,trades,best_desk FROM hours ORDER BY hour DESC LIMIT 24")[::-1]
         return {
             "cycle": cyc, "warmup": cfg.warmup, "phase": self.phase,
-            "mode": "live prices" if self.live else "simulated market",
+            "mode": "live prices" if self.live else "simulated market", "market_note": self.market_note,
+            "pipe": self.pipe.summary() if self.pipe else None,
+            "symbols": list(m.symbols), "prices": {s: round(m.last(s), 6) for s in m.symbols},
+            "agents_total": len(agents), "agents_active": sum(1 for a in agents if a["active"]),
             "equity": round(last_eq, 2), "start": cfg.start_equity, "pnl": round(last_eq - cfg.start_equity, 2),
             "drawdown": round(p.drawdown(last_eq), 4), "halted": p.halted, "halt_reason": p.halt_reason,
             "paused": p.paused, "day_blocked": p.day_blocked,

@@ -134,48 +134,113 @@ class ReplayMarket:
 
 
 class LiveMarket:
-    """Real prices, one candle per cycle (1-minute klines). Data only; no copy traders here."""
+    """Real prices, one candle per cycle (1-minute candles). Data only; no copy traders here.
+    Tries several public exchanges, because some block cloud servers (Binance answers HTTP 418 to Render)."""
     kind = "live"
+    PAIRS = {"okx": "{s}-USDT", "bybit": "{s}USDT", "coinbase": "{s}-USD", "kraken": "{s}USD", "binance": "{s}USDT"}
 
     def __init__(self, symbols, keep=1200, pair_suffix="USDT"):
         self.symbols = list(symbols)
-        self.suffix = pair_suffix
         self.keep = keep
         self.candles = {s: [] for s in self.symbols}
         self._last = {}
         self._last_open_time = {s: 0 for s in self.symbols}
+        self.src = {}
+        self.errors = {}
         for s in self.symbols:
             for k in self._klines(s, 1000)[:-1]:
                 self._add(s, k)
             self._last[s] = self.candles[s][-1]["c"]
         self.history = {s: list(v) for s, v in self.candles.items()}   # real history the academy replays
         self.cycle = min(len(v) for v in self.candles.values())        # live cycles continue after the history
+        self.source = ", ".join(sorted(set(self.src.values())))
 
-    def _klines(self, s, limit):
-        path = f"/api/v3/klines?symbol={s}{self.suffix}&interval=1m&limit={limit}"
-        err = None
-        for host in ("https://data-api.binance.vision", "https://api.binance.com"):   # first one is the public market-data mirror (works from more regions)
+    @staticmethod
+    def _get(url):
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 SwarmTrader"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            return json.loads(r.read())
+
+    # each returns ascending [[open_ms, o, h, l, c, v], ...]; the last row may still be forming
+    def _okx(self, s, limit):
+        inst = f"{s}-USDT"
+        rows = self._get(f"https://www.okx.com/api/v5/market/candles?instId={inst}&bar=1m&limit=300")["data"]
+        while len(rows) < limit:
+            more = self._get(f"https://www.okx.com/api/v5/market/history-candles?instId={inst}&bar=1m&limit=100&after={rows[-1][0]}")["data"]
+            if not more:
+                break
+            rows += more
+        return [[int(r[0]), r[1], r[2], r[3], r[4], r[5]] for r in rows[:limit]][::-1]
+
+    def _bybit(self, s, limit):
+        rows = self._get(f"https://api.bybit.com/v5/market/kline?category=spot&symbol={s}USDT&interval=1&limit={min(limit, 1000)}")["result"]["list"]
+        return [[int(r[0]), r[1], r[2], r[3], r[4], r[5]] for r in rows][::-1]
+
+    def _coinbase(self, s, limit):
+        out, end = [], None
+        while len(out) < limit:
+            q = "" if end is None else "&end=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(end)) + \
+                "&start=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(end - 300 * 60))
+            rows = self._get(f"https://api.exchange.coinbase.com/products/{s}-USD/candles?granularity=60{q}")
+            if not rows:
+                break
+            out += rows
+            end = rows[-1][0] - 60
+            if limit <= 300:
+                break
+        out = sorted({r[0]: r for r in out}.values())[-limit:]
+        return [[int(r[0]) * 1000, r[3], r[2], r[1], r[4], r[5]] for r in out]
+
+    def _kraken(self, s, limit):
+        d = self._get(f"https://api.kraken.com/0/public/OHLC?pair={'XBT' if s == 'BTC' else s}USD&interval=1")["result"]
+        rows = next(v for k, v in d.items() if k != "last")
+        return [[int(r[0]) * 1000, r[1], r[2], r[3], r[4], r[6]] for r in rows][-limit:]
+
+    def _binance(self, s, limit):
+        for host in ("https://data-api.binance.vision", "https://api.binance.com"):
             try:
-                with urllib.request.urlopen(host + path, timeout=10) as r:
-                    return json.loads(r.read())
+                return self._get(f"{host}/api/v3/klines?symbol={s}USDT&interval=1m&limit={limit}")
             except Exception as e:
                 err = e
         raise err
 
+    def _klines(self, s, limit):
+        order = ["okx", "bybit", "coinbase", "kraken", "binance"]
+        if s in self.src:                       # stick with the exchange that worked, fall back if it stops
+            order.remove(self.src[s])
+            order.insert(0, self.src[s])
+        err = None
+        for name in order:
+            try:
+                rows = getattr(self, "_" + name)(s, limit)
+                if len(rows) >= min(limit, 3):
+                    if self.src.get(s) != name:
+                        print(f"[live] {s} prices from {name}")
+                    self.src[s] = name
+                    return rows
+            except Exception as e:
+                err = e
+                self.errors[name] = f"{type(e).__name__}: {str(e)[:80]}"
+        raise err or RuntimeError("no exchange returned candles")
+
     def _add(self, s, k):
-        if k[0] <= self._last_open_time[s]:
+        if int(k[0]) <= self._last_open_time[s]:
             return False
-        self._last_open_time[s] = k[0]
-        self.candles[s].append({"o": float(k[1]), "h": float(k[2]), "l": float(k[3]), "c": float(k[4]), "v": float(k[5]), "t": k[0] / 1000.0})
+        self._last_open_time[s] = int(k[0])
+        self.candles[s].append({"o": float(k[1]), "h": float(k[2]), "l": float(k[3]), "c": float(k[4]), "v": float(k[5]), "t": int(k[0]) / 1000.0})
         del self.candles[s][:-self.keep]
         return True
 
     def step(self):
-        """Blocks until a new closed 1-minute candle exists for every symbol."""
+        """Blocks until a new closed 1-minute candle exists. Network hiccups are retried, never fatal."""
         while True:
             fresh = 0
             for s in self.symbols:
-                ks = self._klines(s, 3)
+                try:
+                    ks = self._klines(s, 3)
+                except Exception as e:
+                    print(f"[live] {s}: all exchanges failed ({str(e)[:80]}), retrying")
+                    continue
                 if self._add(s, ks[-2]):          # ks[-1] is the still-forming candle
                     fresh += 1
             if fresh:

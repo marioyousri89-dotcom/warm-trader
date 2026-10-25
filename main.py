@@ -31,7 +31,7 @@ def main():
     cfg = Config(seed=args.seed, db_path=args.db, keep_brain=args.keep, use_llm=not args.no_llm)
     eng = Engine(cfg, live=args.live)
     print(f"[start] {sum(len(s) for _, _, s in __import__('agents').GROUPS)} agents | "
-          f"mode: {'live prices' if args.live else 'simulated market'} | "
+          f"mode: {eng.market_note} | "
           f"Claude: {'ON (' + cfg.model + ')' if eng.llm.on else 'OFF (set ANTHROPIC_API_KEY to enable)'} | PAPER TRADING ONLY")
     if not args.no_dashboard:
         token = os.environ.get("DASHBOARD_TOKEN")
@@ -40,7 +40,33 @@ def main():
                              "Set the DASHBOARD_TOKEN environment variable to a long random string.")
         serve(eng, args.port, args.host, token)
         print(f"[dashboard] http://{args.host}:{args.port}" + ("/?token=<DASHBOARD_TOKEN>" if token else ""))
-    eng.macro = make_macro(args.live, cfg.symbols, cfg.cycles_per_hour, args.seed)
+    url = os.environ.get("RENDER_EXTERNAL_URL")
+    if url:   # free Render plans sleep without inbound traffic: ping our own public address so the swarm keeps trading
+        import threading, urllib.request
+        def _keep():
+            while True:
+                time.sleep(540)
+                try:
+                    urllib.request.urlopen(url.rstrip('/') + '/healthz', timeout=30).read(1)
+                except Exception:
+                    pass
+        threading.Thread(target=_keep, daemon=True).start()
+    if os.environ.get("MARKET_PIPE", "1") != "0":
+        from pipe import MarketPipe
+        eng.pipe = MarketPipe()
+        print(f"[pipe] market pipe started: {len(eng.pipe.providers)} providers, {len(eng.pipe.declared)} feeds requested")
+
+        def _pipe_log():
+            while True:
+                time.sleep(120)
+                s = eng.pipe.summary()
+                bad = [p["name"] + " (" + p["err"][:50] + ")" for p in eng.pipe.providers.values() if p["ok"] is False]
+                print(f"[pipe] live feeds {s['live']} / {s['declared']} | providers ok {s['providers_ok']}/{s['providers']} | {s['by_cat']}")
+                if bad:
+                    print("[pipe] failing: " + "; ".join(bad[:25]))
+        import threading as _th
+        _th.Thread(target=_pipe_log, daemon=True).start()
+    eng.macro = make_macro(eng.live, cfg.symbols, cfg.cycles_per_hour, args.seed)
     eng.macro.llm = eng.llm
     print(f"[warmup] building {cfg.warmup} candles of history ...")
     eng.warm()

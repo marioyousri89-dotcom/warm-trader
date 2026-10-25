@@ -76,7 +76,7 @@ DESK_SPECS = [
 
 GROUPS = [("scout", "S", SCOUT_SPECS), ("analyst", "A", ANALYST_SPECS), ("quant", "Q", QUANT_ROSTER),
           ("copy", "C", COPY_SPECS), ("predictor", "P", PREDICTOR_SPECS), ("macro", "M", MACRO_SPECS),
-          ("platform", "X", []), ("desk", "T", DESK_SPECS),
+          ("platform", "X", []), ("pipe", "Y", []), ("desk", "T", DESK_SPECS),
           ("improver", "I", [(l, {}) for l in IMPROVER_LENSES])]
 KIND = {"scout": "scout", "predictor": "predict", "copy": "copy"}
 
@@ -217,6 +217,17 @@ class Swarm:
                 continue
             self.b.post(cycle, name, "platform", it["symbol"], "platform", it["side"], it["strength"],
                         {"note": it["note"]}, market.last(it["symbol"]), cycle + self.cfg.cycles_per_hour)
+
+    # ---------------- market pipe agents (one per idea: news, funding, premium, fear&greed, world, breadth) ----------------
+    def run_pipe(self, cycle, market, items):
+        for src, sym, side, strength, note in items:
+            name = f"Y.{src}"
+            if name not in self.agents:
+                self.add_agent("pipe", name, src, {"source": src}, cycle, None)
+            if not self.agents[name]["active"] or sym not in market.symbols:
+                continue
+            self.b.post(cycle, name, "pipe", sym, "platform", side, strength, {"note": note},
+                        market.last(sym), cycle + self.cfg.cycles_per_hour)
 
     # ---------------- market analysts ----------------
     def run_analysts(self, cycle, market):
