@@ -30,7 +30,7 @@ class Config:
     desk_max_share: float = 0.25
     desk_loss_limit: float = 0.01       # a desk losing > 1% of total equity in 24h is paused
     desk_pause_hours: int = 2
-    cycles_per_hour: int = 4            # simulated candle = 15 min; live mode (1-min candles) uses 60
+    cycles_per_hour: int = 4            # simulated candle = 15 min; live mode uses 1-hour candles (1)
     daily_loss_limit: float = 0.03
     max_drawdown: float = 0.12       # kill switch
     cycles_per_day: int = 96

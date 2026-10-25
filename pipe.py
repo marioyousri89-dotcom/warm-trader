@@ -61,27 +61,24 @@ FX = ["EUR", "JPY", "GBP", "AUD", "CAD", "CHF", "CNY", "HKD", "NZD", "SEK", "KRW
 NEWS = [
     ("coindesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"), ("cointelegraph", "https://cointelegraph.com/rss"),
     ("decrypt", "https://decrypt.co/feed"), ("theblock", "https://www.theblock.co/rss.xml"),
-    ("bitcoinmagazine", "https://bitcoinmagazine.com/.rss/full/"), ("cryptoslate", "https://cryptoslate.com/feed/"),
-    ("cryptopotato", "https://cryptopotato.com/feed/"), ("newsbtc", "https://www.newsbtc.com/feed/"),
+    ("bitcoinmagazine", "https://bitcoinmagazine.com/.rss/full/"), ("newsbtc", "https://www.newsbtc.com/feed/"),
     ("bitcoinist", "https://bitcoinist.com/feed/"), ("utoday", "https://u.today/rss"),
     ("beincrypto", "https://beincrypto.com/feed/"), ("cryptonews", "https://cryptonews.com/news/feed/"),
-    ("dailyhodl", "https://dailyhodl.com/feed/"), ("cryptobriefing", "https://cryptobriefing.com/feed/"),
-    ("coinjournal", "https://coinjournal.net/feed/"), ("ambcrypto", "https://ambcrypto.com/feed/"),
+    ("dailyhodl", "https://dailyhodl.com/feed/"), ("coinjournal", "https://coinjournal.net/feed/"), ("ambcrypto", "https://ambcrypto.com/feed/"),
     ("cnbc-markets", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069"),
     ("cnbc-economy", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"),
     ("cnbc-finance", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"),
     ("marketwatch-top", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
     ("marketwatch-pulse", "https://feeds.content.dowjones.io/public/rss/mw_marketpulse"),
     ("wsj-markets", "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"),
-    ("yahoo-finance", "https://finance.yahoo.com/news/rssindex"), ("investing", "https://www.investing.com/rss/news.rss"),
-    ("fxstreet", "https://www.fxstreet.com/rss/news"), ("bbc-business", "https://feeds.bbci.co.uk/news/business/rss.xml"),
+    ("investing", "https://www.investing.com/rss/news.rss"),
+    ("bbc-business", "https://feeds.bbci.co.uk/news/business/rss.xml"),
     ("bbc-world", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("guardian-business", "https://www.theguardian.com/business/rss"),
     ("nyt-business", "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"),
     ("economist-finance", "https://www.economist.com/finance-and-economics/rss.xml"),
     ("seekingalpha", "https://seekingalpha.com/market_currents.xml"),
     ("fed", "https://www.federalreserve.gov/feeds/press_all.xml"), ("ecb", "https://www.ecb.europa.eu/rss/press.html"),
-    ("rba", "https://www.rba.gov.au/rss/rss-cb-media-releases.xml"),
     ("abc-au-business", "https://www.abc.net.au/news/feed/51892/rss.xml"),
 ]
 
@@ -236,8 +233,7 @@ PRICE = [  # (name, url, parser, poll seconds)
     ("bitfinex", "https://api-pub.bitfinex.com/v2/tickers?symbols=ALL", p_bitfinex, 60),
     ("bitstamp", "https://www.bitstamp.net/api/v2/ticker/", p_bitstamp, 60),
     ("gemini", "https://api.gemini.com/v1/pricefeed", p_gemini, 45),
-    ("binance", "https://data-api.binance.vision/api/v3/ticker/24hr", p_bin, 60),
-    ("coingecko", "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250", p_coingecko, 240),
+    ("coingecko", "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250", p_coingecko, 900),
     ("coinlore", "https://api.coinlore.net/api/tickers/?start=0&limit=100", p_coinlore, 180),
 ]
 
@@ -301,7 +297,7 @@ class MarketPipe:
         self._job("blockchain", "onchain", 600, self._blockchain)
         self._job("defillama", "defi", 900, self._llama)
         self._job("stablecoins", "defi", 900, self._stables)
-        self._job("cg-global", "crypto", 600, self._cg_global)
+        self._job("cg-global", "crypto", 1800, self._cg_global)
         self.declared |= {"feargreed:index", "mempool:fastest", "mempool:hour", "mempool:difficulty", "blockchain:hashrate",
                           "blockchain:tx24h", "stablecoins:total", "global:mcap", "global:btc_dominance"} | \
             {f"defillama:{i}" for i in range(20)}

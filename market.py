@@ -134,12 +134,12 @@ class ReplayMarket:
 
 
 class LiveMarket:
-    """Real prices, one candle per cycle (15-minute candles by default: 1-minute moves are smaller than fees). Data only.
+    """Real prices, one candle per cycle (1-hour candles by default: 1- and 15-minute moves were smaller than fees). Data only.
     Tries several public exchanges, because some block cloud servers (Binance answers HTTP 418 to Render)."""
     kind = "live"
     PAIRS = {"okx": "{s}-USDT", "bybit": "{s}USDT", "coinbase": "{s}-USD", "kraken": "{s}USD", "binance": "{s}USDT"}
 
-    def __init__(self, symbols, keep=1200, pair_suffix="USDT", bar=15):
+    def __init__(self, symbols, keep=1200, pair_suffix="USDT", bar=60):
         self.symbols = list(symbols)
         self.bar = bar                                   # minutes per candle
         self.keep = keep
@@ -156,6 +156,12 @@ class LiveMarket:
         self.cycle = min(len(v) for v in self.candles.values())        # live cycles continue after the history
         self.source = ", ".join(sorted(set(self.src.values())))
 
+    def _okxbar(self):
+        return {60: "1H", 120: "2H", 240: "4H"}.get(self.bar, f"{self.bar}m")
+
+    def _binbar(self):
+        return {60: "1h", 120: "2h", 240: "4h"}.get(self.bar, f"{self.bar}m")
+
     @staticmethod
     def _get(url):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 SwarmTrader"})
@@ -165,9 +171,9 @@ class LiveMarket:
     # each returns ascending [[open_ms, o, h, l, c, v], ...]; the last row may still be forming
     def _okx(self, s, limit):
         inst = f"{s}-USDT"
-        rows = self._get(f"https://www.okx.com/api/v5/market/candles?instId={inst}&bar={self.bar}m&limit=300")["data"]
+        rows = self._get(f"https://www.okx.com/api/v5/market/candles?instId={inst}&bar={self._okxbar()}&limit=300")["data"]
         while len(rows) < limit:
-            more = self._get(f"https://www.okx.com/api/v5/market/history-candles?instId={inst}&bar={self.bar}m&limit=100&after={rows[-1][0]}")["data"]
+            more = self._get(f"https://www.okx.com/api/v5/market/history-candles?instId={inst}&bar={self._okxbar()}&limit=100&after={rows[-1][0]}")["data"]
             if not more:
                 break
             rows += more
@@ -201,7 +207,7 @@ class LiveMarket:
     def _binance(self, s, limit):
         for host in ("https://data-api.binance.vision", "https://api.binance.com"):
             try:
-                return self._get(f"{host}/api/v3/klines?symbol={s}USDT&interval={self.bar}m&limit={limit}")
+                return self._get(f"{host}/api/v3/klines?symbol={s}USDT&interval={self._binbar()}&limit={limit}")
             except Exception as e:
                 err = e
         raise err
@@ -247,7 +253,7 @@ class LiveMarket:
                     fresh += 1
             if fresh:
                 break
-            time.sleep(10)
+            time.sleep(30)
         for s in self.symbols:
             self._last[s] = self.candles[s][-1]["c"]
         self.cycle += 1
