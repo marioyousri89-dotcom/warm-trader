@@ -5,7 +5,6 @@ services:
     runtime: docker
     region: singapore        # closest to Melbourne, and Binance's price feed is blocked from some US servers
     plan: free
-    healthCheckPath: /
     envVars:
       - {key: DASHBOARD_TOKEN, generateValue: true}     # your password: Render shows it under Environment
       - {key: ANTHROPIC_API_KEY, sync: false}           # you paste this in the Render dashboard, never in code
