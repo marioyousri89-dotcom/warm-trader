@@ -82,6 +82,8 @@ class Engine:
             self.market = SimMarket(cfg.symbols, cfg.seed)
             self.market_note = self.market_note or "simulated market"
         self.pipe = None                    # the MARKET PIPE (set by main); every page reads it
+        from council import Council
+        self.council = Council(self)        # five seats + one gate + owner hand-off
         self.traders = None if live else SimTraders(self.b, self.market, cfg.seed + 4)
         self.swarm = Swarm(cfg, self.b)
         self.agg, self.risk, self.port = Aggregator(), Risk(cfg), Portfolio(cfg, self.b)
@@ -136,6 +138,10 @@ class Engine:
             p.flatten(m, m.cycle, "owner flatten")
             p.paused = True
             msg = "All positions closed and trading paused."
+        elif action.startswith("review_"):
+            msg = self.council.set_review(action == "review_on")
+        elif action.startswith("yes:") or action.startswith("no:"):
+            return self.council.answer(action.split(":", 1)[1], action.startswith("yes:"))
         elif action == "reset_halt":
             if not p.halted:
                 return "The kill switch is not active."
@@ -234,6 +240,11 @@ class Engine:
         self.reset_book()
         cfg.t0 = self.market.cycle
         self.phase = "live"
+        from council import Council
+        old = self.council
+        self.council = Council(self)            # live counts start clean after school
+        self.council.human_review = old.human_review
+        self.council.calibrate(old.scores)      # gate calibrated on this system's own training ideas
         self.b.kv_set("graduation", report)
         self.b.add_lesson(self.market.cycle, "academy", report["summary"])
         return report
@@ -508,6 +519,7 @@ class Engine:
             "cycle": cyc, "warmup": cfg.warmup, "phase": self.phase,
             "mode": "live prices" if self.live else "simulated market", "market_note": self.market_note,
             "pipe": self.pipe.summary() if self.pipe else None,
+            "council": self.council.state(),
             "symbols": list(m.symbols), "prices": {s: round(m.last(s), 6) for s in m.symbols},
             "agents_total": len(agents), "agents_active": sum(1 for a in agents if a["active"]),
             "equity": round(last_eq, 2), "start": cfg.start_equity, "pnl": round(last_eq - cfg.start_equity, 2),
@@ -539,7 +551,7 @@ class Engine:
             "bottom_agents": [slim(a) for a in sorted(ranked, key=lambda a: a["weight"])[:8]],
             "regimes": {s: {"label": r["label"], "vol_high": r["vol_high"]} for s, r in self.swarm.regimes.items()},
             "feed": b.q("SELECT cycle,agent,symbol,kind,direction,ROUND(confidence,2) conf FROM signals "
-                        "WHERE kind IN ('scout','predict','copy','macro','platform') ORDER BY id DESC LIMIT 30"),
+                        "WHERE kind IN ('scout','predict','copy','macro','platform') ORDER BY id DESC LIMIT 120"),
             "open_trades": [{"desk": t["desk"], "symbol": t["symbol"], "side": t["side"], "entry": round(t["entry"], 4),
                              "stop": round(t["stop"], 4), "target": round(t["target"], 4), "since": t["open_cycle"],
                              "reason": t["reason"]} for t in p.open.values()],
