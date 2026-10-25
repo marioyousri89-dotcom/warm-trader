@@ -134,13 +134,14 @@ class ReplayMarket:
 
 
 class LiveMarket:
-    """Real prices, one candle per cycle (1-minute candles). Data only; no copy traders here.
+    """Real prices, one candle per cycle (15-minute candles by default: 1-minute moves are smaller than fees). Data only.
     Tries several public exchanges, because some block cloud servers (Binance answers HTTP 418 to Render)."""
     kind = "live"
     PAIRS = {"okx": "{s}-USDT", "bybit": "{s}USDT", "coinbase": "{s}-USD", "kraken": "{s}USD", "binance": "{s}USDT"}
 
-    def __init__(self, symbols, keep=1200, pair_suffix="USDT"):
+    def __init__(self, symbols, keep=1200, pair_suffix="USDT", bar=15):
         self.symbols = list(symbols)
+        self.bar = bar                                   # minutes per candle
         self.keep = keep
         self.candles = {s: [] for s in self.symbols}
         self._last = {}
@@ -164,42 +165,43 @@ class LiveMarket:
     # each returns ascending [[open_ms, o, h, l, c, v], ...]; the last row may still be forming
     def _okx(self, s, limit):
         inst = f"{s}-USDT"
-        rows = self._get(f"https://www.okx.com/api/v5/market/candles?instId={inst}&bar=1m&limit=300")["data"]
+        rows = self._get(f"https://www.okx.com/api/v5/market/candles?instId={inst}&bar={self.bar}m&limit=300")["data"]
         while len(rows) < limit:
-            more = self._get(f"https://www.okx.com/api/v5/market/history-candles?instId={inst}&bar=1m&limit=100&after={rows[-1][0]}")["data"]
+            more = self._get(f"https://www.okx.com/api/v5/market/history-candles?instId={inst}&bar={self.bar}m&limit=100&after={rows[-1][0]}")["data"]
             if not more:
                 break
             rows += more
         return [[int(r[0]), r[1], r[2], r[3], r[4], r[5]] for r in rows[:limit]][::-1]
 
     def _bybit(self, s, limit):
-        rows = self._get(f"https://api.bybit.com/v5/market/kline?category=spot&symbol={s}USDT&interval=1&limit={min(limit, 1000)}")["result"]["list"]
+        rows = self._get(f"https://api.bybit.com/v5/market/kline?category=spot&symbol={s}USDT&interval={self.bar}&limit={min(limit, 1000)}")["result"]["list"]
         return [[int(r[0]), r[1], r[2], r[3], r[4], r[5]] for r in rows][::-1]
 
     def _coinbase(self, s, limit):
         out, end = [], None
         while len(out) < limit:
+            g = self.bar * 60
             q = "" if end is None else "&end=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(end)) + \
-                "&start=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(end - 300 * 60))
-            rows = self._get(f"https://api.exchange.coinbase.com/products/{s}-USD/candles?granularity=60{q}")
+                "&start=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(end - 299 * g))
+            rows = self._get(f"https://api.exchange.coinbase.com/products/{s}-USD/candles?granularity={g}{q}")
             if not rows:
                 break
             out += rows
-            end = rows[-1][0] - 60
+            end = rows[-1][0] - g
             if limit <= 300:
                 break
         out = sorted({r[0]: r for r in out}.values())[-limit:]
         return [[int(r[0]) * 1000, r[3], r[2], r[1], r[4], r[5]] for r in out]
 
     def _kraken(self, s, limit):
-        d = self._get(f"https://api.kraken.com/0/public/OHLC?pair={'XBT' if s == 'BTC' else s}USD&interval=1")["result"]
+        d = self._get(f"https://api.kraken.com/0/public/OHLC?pair={'XBT' if s == 'BTC' else s}USD&interval={self.bar}")["result"]
         rows = next(v for k, v in d.items() if k != "last")
         return [[int(r[0]) * 1000, r[1], r[2], r[3], r[4], r[6]] for r in rows][-limit:]
 
     def _binance(self, s, limit):
         for host in ("https://data-api.binance.vision", "https://api.binance.com"):
             try:
-                return self._get(f"{host}/api/v3/klines?symbol={s}USDT&interval=1m&limit={limit}")
+                return self._get(f"{host}/api/v3/klines?symbol={s}USDT&interval={self.bar}m&limit={limit}")
             except Exception as e:
                 err = e
         raise err
@@ -232,7 +234,7 @@ class LiveMarket:
         return True
 
     def step(self):
-        """Blocks until a new closed 1-minute candle exists. Network hiccups are retried, never fatal."""
+        """Blocks until a new closed candle exists. Network hiccups are retried, never fatal."""
         while True:
             fresh = 0
             for s in self.symbols:
@@ -245,7 +247,7 @@ class LiveMarket:
                     fresh += 1
             if fresh:
                 break
-            time.sleep(3)
+            time.sleep(10)
         for s in self.symbols:
             self._last[s] = self.candles[s][-1]["c"]
         self.cycle += 1

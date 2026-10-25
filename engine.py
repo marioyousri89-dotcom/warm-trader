@@ -101,7 +101,7 @@ class Engine:
         self.ext_lock = threading.Lock()
         self.ext_queue = []
         if live:
-            cfg.cycles_per_day, cfg.cycles_per_hour, cfg.warmup = 1440, 60, 0
+            cfg.cycles_per_day, cfg.cycles_per_hour, cfg.warmup = 96, 4, 0     # 15-minute candles, like the simulator
         cfg.t0 = cfg.warmup
         self.b.kv_set("charters", CHARTERS)
         self.port.hook_open = lambda t: self.mirror and self.exec.on_open(t)
@@ -314,7 +314,7 @@ class Engine:
             self.macro.update(c, m)
             self.swarm.run_macro(c, m, self.macro)
             self.poly.step(c, m, self.macro)
-        if self.pipe and self.live and self.phase == "live" and c % 15 == 0:
+        if self.pipe and self.live and self.phase == "live":      # every 15-minute candle
             try:
                 self.swarm.run_pipe(c, m, self.pipe.signals(m.symbols))
             except Exception as e:

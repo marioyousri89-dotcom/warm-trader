@@ -161,6 +161,8 @@ class Risk:
         stop_dist = stop_mult * atr_val
         if stop_dist <= 0:
             return 0.0, "no volatility data", 0.0
+        if stop_dist / price < 4 * (cfg.fee + cfg.slippage):   # the move we'd risk is too small to beat round-trip costs
+            return 0.0, "move too small to beat fees", 0.0
         risk = equity * cfg.risk_per_trade * min(1.5, max(0.5, conv / 0.5)) * mult * (0.5 if vol_high else 1.0)
         room = cfg.max_heat * equity - port.heat()
         if room < equity * 0.001:
