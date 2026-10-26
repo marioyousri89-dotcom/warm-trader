@@ -313,29 +313,42 @@ class MarketPipe:
         if start:
             threading.Thread(target=self._loop, daemon=True).start()
 
-    # ---------------------------------------------------------------- scheduler
-    def _job(self, name, cat, every, fn):
-        self.providers[name] = {"name": name, "cat": cat, "ok": None, "err": "", "last": 0.0, "ms": 0, "n": 0,
-                                "every": every, "due": 0.0}
+    # ---------------------------------------------------------------- scheduler: SIX pipelines -> ONE shared pipe
+    LANES = {"prices": 6, "futures": 2, "news": 5, "economy": 3, "world": 2, "signals": 2}   # parallel workers each
+    LANE_OF_CAT = {"crypto": "prices", "derivatives": "futures", "news": "news", "social": "news",
+                   "world": "world", "fx": "world", "onchain": "world", "defi": "world", "sentiment": "signals",
+                   "prediction": "signals", "newtokens": "signals"}
+
+    def _job(self, name, cat, every, fn, lane=None):
+        lane = lane or ("economy" if name in getattr(self, "econ_jobs", ()) else self.LANE_OF_CAT.get(cat, "world"))
+        self.providers[name] = {"name": name, "cat": cat, "lane": lane, "ok": None, "err": "", "last": 0.0, "ms": 0,
+                                "n": 0, "every": every, "due": 0.0}
         self.jobs.append((name, fn))
 
     def _loop(self):
-        pool = ThreadPoolExecutor(max_workers=14)
+        """Each pipeline has its own scheduler and its own workers, so a slow news site can never hold up prices."""
+        from collections import deque
+        self.lane_log = {k: deque(maxlen=4000) for k in self.LANES}
+        for lane, workers in self.LANES.items():
+            jobs = [(n, f) for n, f in self.jobs if self.providers[n]["lane"] == lane]
+            threading.Thread(target=self._lane_loop, args=(lane, jobs, workers), daemon=True).start()
+
+    def _lane_loop(self, lane, jobs, workers):
+        pool = ThreadPoolExecutor(max_workers=workers)
         running = set()
-        stagger = 0.0
-        for name, _ in self.jobs:            # spread the first round over ~40 s
-            self.providers[name]["due"] = time.time() + stagger
-            stagger += 0.35
+        step = max(0.15, 45.0 / max(1, len(jobs)))      # spread each lane's first round over ~45 s
+        for k, (name, _) in enumerate(jobs):
+            self.providers[name]["due"] = time.time() + k * step
         while True:
             now = time.time()
-            for name, fn in self.jobs:
+            for name, fn in jobs:
                 p = self.providers[name]
                 if name in running or now < p["due"]:
                     continue
                 running.add(name)
                 p["due"] = now + p["every"]
                 pool.submit(self._run, name, fn, running)
-            time.sleep(1.0)
+            time.sleep(0.5)
 
     def _run(self, name, fn, running):
         p = self.providers[name]
@@ -343,6 +356,9 @@ class MarketPipe:
         try:
             n = fn() or 0
             p.update(ok=True, err="", n=n)
+            log = getattr(self, "lane_log", {}).get(p["lane"])
+            if log is not None:
+                log.append((time.time(), n))
         except Exception as e:
             p.update(ok=False, err=f"{type(e).__name__}: {str(e)[:90]}")
             if "429" in str(e) or "418" in str(e) or "403" in str(e):
@@ -351,6 +367,17 @@ class MarketPipe:
             p["ms"] = int((time.time() - t0) * 1000)
             p["last"] = time.time()
             running.discard(name)
+
+    def lanes(self):
+        now, out = time.time(), []
+        for lane, workers in self.LANES.items():
+            ps = [p for p in self.providers.values() if p["lane"] == lane]
+            log = [x for x in getattr(self, "lane_log", {}).get(lane, []) if now - x[0] < 60]
+            out.append({"lane": lane, "workers": workers, "sources": len(ps), "ok": sum(1 for p in ps if p["ok"]),
+                        "fail": sum(1 for p in ps if p["ok"] is False), "runs_min": len(log),
+                        "items_min": sum(x[1] for x in log),
+                        "last": max((p["last"] for p in ps if p["ok"]), default=0)})
+        return out
 
     def _put(self, fid, cat, provider, label, value, chg=None, extra=None):
         if value is None:
@@ -607,6 +634,7 @@ class MarketPipe:
         last_fetch = max((p["last"] for p in provs if p["ok"]), default=0)
         return {"declared": len(self.declared), "live": len(feeds), "by_cat": by,
                 "publishers": len(self.publishers), "latest": latest, "last_fetch": last_fetch,
+                "lanes": self.lanes(),
                 "sources": len([p for p in ok if not p["name"].startswith("gnews:")]) + len(self.publishers),
                 "news_per_hour": self.news_mood(hours=1)["n"],
                 "providers_ok": sum(1 for p in provs if p["ok"]), "providers": len(provs),
@@ -636,6 +664,16 @@ class MarketPipe:
 
     # ---------------------------------------------------------------- what the pipe agents vote
     def signals(self, symbols):
+        """Cached 5 s: the fast lane can ask every second without re-reading 2,500 headlines each time."""
+        key = tuple(symbols)
+        c = getattr(self, "_sig_cache", None)
+        if c and c[0] == key and time.time() - c[1] < 5:
+            return c[2]
+        out = self._signals(symbols)
+        self._sig_cache = (key, time.time(), out)
+        return out
+
+    def _signals(self, symbols):
         """Opinions for the pipe agents (one agent per idea). Each is scored by the brain like any other agent."""
         out = []
         feeds = self._live()

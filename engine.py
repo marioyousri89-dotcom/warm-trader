@@ -457,7 +457,7 @@ class Engine:
         return res
 
     # ---------------------------------------------------------------- FAST LANE (every ~60 s between hourly candles)
-    def fast_tick(self):
+    def fast_tick(self, hot=False):
         """Live prices from the pipe -> marks, stops and targets checked now (not at the candle close),
         and the News Desk can react to a burst of headlines within a minute (still through council + risk)."""
         if self.phase != "live" or not self.pipe:
@@ -467,8 +467,9 @@ class Engine:
         t0 = _t.time()
         m, c, p = self.market, self.market.cycle, self.port
         live = {}
+        feeds = self.pipe._live()                                 # read the shared pipe once per second
         for s in m.symbols:
-            cc = self.pipe.consensus(s)
+            cc = self.pipe.consensus(s, feeds)
             ref = m.candles[s][-1]["c"]
             if cc and cc["sources"] >= 3 and abs(cc["price"] / ref - 1) < 0.08:
                 live[s] = cc["price"]
@@ -494,7 +495,12 @@ class Engine:
         p.last_equity = eq
         p.peak = max(p.peak, eq)
         self._risk_state(c, eq)
-        news = [x for x in self.pipe.signals(m.symbols) if x[0] in ("pipe_buzz", "pipe_news") and x[3] >= 0.6]
+        checks = len(m.symbols) + len(p.open)                     # every market and every open position, every second
+        news = []
+        if hot or _t.time() - self.fast.get("news_t", 0) >= 30:   # news re-checked the moment it lands (and every 30 s)
+            self.fast["news_t"] = _t.time()
+            news = [x for x in self.pipe.signals(m.symbols) if x[0] in ("pipe_buzz", "pipe_news") and x[3] >= 0.6]
+            checks += len(m.symbols) * 6                           # six pipe ideas looked at per market
         if news and not p.paused and not p.halted:
             desk = next((a["name"] for a in self.desks.desks() if a["params"].get("style") == "news"), None)
             if desk:
@@ -516,6 +522,15 @@ class Engine:
         self.b.flush()
         self.fast["ticks"] += 1
         self.fast["ms"] = int((_t.time() - t0) * 1000)
+        log = self.fast.setdefault("_log", [])
+        log.append((_t.time(), checks, len(acts)))
+        cut = _t.time() - 60
+        while log and log[0][0] < cut:
+            log.pop(0)
+        self.fast["decisions_min"] = sum(x[1] for x in log)
+        self.fast["actions_min"] = sum(x[2] for x in log)
+        tr = self.b.q("SELECT COUNT(*) n FROM trades WHERE open_cycle>=?", (c - 1,))[0]["n"] if hot else self.fast.get("trades_hour", 0)
+        self.fast["trades_hour"] = tr
         self.fast["last"] = _t.time()
         for a in acts:
             self.fast["actions"] = ([{"t": _t.time(), "text": a}] + self.fast["actions"])[:30]
@@ -599,7 +614,7 @@ class Engine:
             "pipe": self.pipe.summary() if self.pipe else None,
             "council": self.council.state(),
             "selfdev": self.selfdev.state(),
-            "fast": self.fast,
+            "fast": {k: v for k, v in self.fast.items() if not k.startswith("_")},
             "symbols": list(m.symbols), "prices": {s: round(m.last(s), 6) for s in m.symbols},
             "agents_total": len(agents), "agents_active": sum(1 for a in agents if a["active"]),
             "equity": round(last_eq, 2), "start": cfg.start_equity, "pnl": round(last_eq - cfg.start_equity, 2),

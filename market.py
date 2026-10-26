@@ -275,12 +275,12 @@ class LiveMarket:
             for _ in range(30):                   # new-candle check every 30 s; FAST LANE reacts within ~1 s of news/prices
                 ev = getattr(self, "event", None)
                 hot = ev is not None and ev.is_set()
-                if self.on_wait and ((hot and time.time() - self._last_wait >= 1) or time.time() - self._last_wait >= 60):
-                    if ev is not None:
+                if self.on_wait and time.time() - self._last_wait >= 1:      # EVERY SECOND
+                    if hot:
                         ev.clear()
                     self._last_wait = time.time()
                     try:
-                        self.on_wait()
+                        self.on_wait(hot)
                     except Exception as e:
                         print("[fast lane] error:", str(e)[:120])
                 time.sleep(1)

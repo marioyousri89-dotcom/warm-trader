@@ -22,6 +22,11 @@ nav a.on{color:var(--tx);border-color:var(--ac);background:#1f2a3a}
 .chip.on{color:var(--up);border-color:var(--up)}.chip.bad{color:var(--dn);border-color:var(--dn)}
 .pipebar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer;background:#120f1d}
 .pipebar b{color:var(--pipe)}
+.lanes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;position:relative}
+.lane{border:1px solid var(--line);border-top:3px solid var(--pipe);border-radius:8px;padding:8px;font:12px ui-monospace,Menlo,monospace;background:rgba(255,62,165,.05)}
+.lane b{font-size:18px;color:#fff}.lane .flow{height:3px;margin-top:6px;background:linear-gradient(90deg,transparent,var(--pipe),transparent);background-size:200% 100%;animation:flow 1.4s linear infinite}
+@keyframes flow{from{background-position:200% 0}to{background-position:0 0}}
+.merge{grid-column:1/-1;text-align:center;padding:8px;border:1px dashed var(--pipe);border-radius:8px;color:var(--pipe);font:12px ui-monospace,Menlo,monospace}
 .tape{overflow:hidden;white-space:nowrap;border-bottom:1px solid var(--line);background:rgba(0,0,0,.35);font:12px ui-monospace,Menlo,monospace;padding:5px 0;position:relative;z-index:1;cursor:pointer}
 .tapein{display:inline-block;padding-left:100%;animation:tape 90s linear infinite}.tapein span{margin-right:34px}
 @keyframes tape{from{transform:translateX(0)}to{transform:translateX(-100%)}}
@@ -91,6 +96,7 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <div class="kpi"><b id="ddk">-</b><span>drawdown</span></div>
 <div class="kpi"><b id="tr">-</b><span>closed trades / win</span></div>
 <div class="kpi"><b id="cy">-</b><span id="mode">cycle</span></div>
+<div class="kpi"><b id="dpm">-</b><span>decisions / min</span></div>
 <span id="llm" class="chip">Claude</span><span id="risk" class="chip">risk</span><span class="chip">PAPER ONLY</span><a id="hbadge" class="chip" href="#council" style="display:none;border-color:var(--mag);color:var(--mag);text-decoration:none"></a></header>
 <nav id="nav"></nav>
 <div class="pipebar" id="pipebar" onclick="go('pipe')"><b>MARKET PIPE</b><span class="mut">starting...</span></div>
@@ -173,6 +179,7 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 
 <!-- MARKET PIPE -->
 <section class="page" data-p="pipe">
+<div class="card c12"><h3>Six pipelines → one shared pipe (each with its own workers, so a slow site never holds up prices)</h3><div class="lanes" id="lanes"></div></div>
 <div class="card c12"><div class="stat" id="pstat"></div></div>
 <div class="card c6"><h3>Live feeds by category</h3><table id="pcat"></table></div>
 <div class="card c6"><h3>Providers (each splits into many feeds)</h3><div class="scroll"><table id="pprov"></table></div></div>
@@ -326,7 +333,8 @@ requestAnimationFrame(drawCL);window.addEventListener('resize',()=>{clBuilt=0});
 function pipebar(){const p=S&&S.pipe;if(!p){const ago=p.last_fetch?Math.max(0,Math.round(Date.now()/1000-p.last_fetch)):null,fa=S.fast||{},fago=fa.last?Math.round(Date.now()/1000-fa.last):null;
 const tp=(p.latest||[]).map(h=>'<span><span class=mut>'+new Date(h.t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+' '+esc(h.src)+':</span> <span class='+cls(h.s)+'>'+esc(h.title)+'</span></span>').join('')+(p.top||[]).map(c=>'<span>'+c.coin+' $'+px(c.price)+' '+pct(c.chg24,1)+'</span>').join('');
 if(tp&&$('tape').dataset.k!==String((p.latest||[{}])[0].t)){$('tape').innerHTML=tp;$('tape').dataset.k=String((p.latest||[{}])[0].t)}
-$('pipebar').innerHTML='<span class=live></span><b>MARKET PIPE</b><span class=mut>updated '+(ago==null?'-':ago+'s ago')+' · fast lane '+(fago==null?'waiting':fago+'s ago'+(fa.ms!=null?' ('+fa.ms+' ms to decide)':''))+(fa.closed||fa.opened?' · '+fa.opened+' fast entries, '+fa.closed+' fast exits':'')+'</span><span class=mut>off</span>';return}
+const lm=(p.lanes||[]).map(l=>l.lane+' '+l.items_min).join(' · ');
+$('pipebar').innerHTML='<span class=live></span><b>MARKET PIPE</b><span class=mut>6 pipelines: '+lm+' items/min</span><span class=mut>updated '+(ago==null?'-':ago+'s ago')+' · fast lane '+(fago==null?'waiting':fago+'s ago'+(fa.ms!=null?' ('+fa.ms+' ms to decide)':''))+(fa.closed||fa.opened?' · '+fa.opened+' fast entries, '+fa.closed+' fast exits':'')+'</span><span class=mut>off</span>';return}
 const t=p.top.slice(0,4).map(c=>'<span>'+c.coin+' <b style="color:var(--tx)">$'+px(c.price)+'</b> <span class=mut>('+c.sources+' src)</span> '+pct(c.chg24,1)+'</span>').join('');
 $('pipebar').innerHTML='<b>MARKET PIPE</b><span><b>'+(p.sources||0)+'</b> sources answering</span><span><b>'+p.live+'</b> live feeds</span><span>'+p.providers_ok+'/'+p.providers+' platforms OK · '+(p.publishers||0)+' news publishers</span><span><b>'+(p.news_per_hour||0)+'</b> stories/hour</span>'+t+
 (p.fng?'<span>Fear&amp;Greed <b style="color:var(--tx)">'+f(p.fng.value,0)+'</b></span>':'')+'<span>news mood <span class='+cls(p.news.mood)+'>'+f(p.news.mood,2)+'</span> <span class=mut>('+p.news.n+')</span></span>'+
@@ -336,7 +344,7 @@ async function tick(){try{S=await (await fetch('/api/state'+Q)).json();head();re
 async function loadPipe(){try{const j=await (await fetch('/api/pipe'+Q)).json();if(!j.providers)return;P=j;lastPipe=Date.now();render()}catch(e){}}
 function head(){const s=S;$('eq').textContent='$'+f(s.equity);$('pnl').innerHTML='<span class='+cls(s.pnl)+'>'+(s.pnl>=0?'+':'')+f(s.pnl)+'</span>';
 $('ddk').textContent=f(s.drawdown*100,1)+'%';$('tr').textContent=s.totals.trades+' / '+(s.totals.win_rate==null?'-':f(s.totals.win_rate*100,0)+'%');
-$('cy').textContent=s.cycle;$('mode').textContent=s.phase+' · '+s.mode;
+$('cy').textContent=s.cycle;const fz=s.fast||{};$('dpm').textContent=fz.decisions_min!=null?fz.decisions_min:'-';$('mode').textContent=s.phase+' · '+s.mode;
 const l=$('llm');l.textContent=s.llm.on?'Claude ON · '+s.llm.calls+' calls':'Claude OFF (no API key)';l.className='chip '+(s.llm.on?'on':'');
 const hq=(s.council&&s.council.queue.length)||0,hb=$('hbadge');hb.style.display=hq?'inline-block':'none';hb.textContent=hq+' waiting for your YES';
 const r=$('risk');r.textContent=s.halted?'KILL SWITCH: '+s.halt_reason:s.day_blocked?'daily limit reached':s.paused?'PAUSED':'risk manager OK';r.className='chip '+(s.halted||s.day_blocked?'bad':'on')}
@@ -401,7 +409,7 @@ function council(){const c=S.council;if(!c)return;const last=c.log[0]||{seats:{}
  tbl('clog',['#','desk','market','side','council'].concat(SEATS.map(s=>s[1])).concat(['verdict']),c.log.map(e=>[e.cycle,esc(e.desk),e.symbol,sideTxt(e.side),'<b>'+f(e.score,2)+'</b>'].concat(seatCells(e.seats)).concat(['<span class="'+(/AUTO|YES/.test(e.verdict)?'up':/VETO|NO|REJECT/.test(e.verdict)?'dn':'pp')+'">'+esc(e.verdict)+'</span>'])))}
 function heat(){const s=S,gs=['scout','predictor','copy','macro','platform','pipe'],m={};(s.feed||[]).forEach(e=>{const g=PRE[e.agent[0]];if(!g)return;const k=e.symbol+'|'+g;m[k]=(m[k]||0)+e.direction*(e.conf||.5)});
  tbl('heat',['market'].concat(gs),s.symbols.map(sym=>['<b>'+sym+'</b>'].concat(gs.map(g=>{const v=m[sym+'|'+g]||0,a=Math.min(.9,Math.abs(v)/2.5);return '<div style="padding:8px 4px;border-radius:4px;background:'+(v>0?'rgba(63,185,80,'+a+')':v<0?'rgba(248,81,73,'+a+')':'#141927')+'">'+(v?(v>0?'+':'')+f(v,1):'·')+'</div>'}))))}
-function matrix(){const s=S;heat();const fa=s.fast||{};$('fastlog').innerHTML=(fa.actions||[]).map(a=>'<div><span class=mut>'+new Date(a.t*1000).toLocaleTimeString()+'</span> '+esc(a.text)+'</div>').join('')||'<span class=mut>'+(fa.ticks?fa.ticks+' fast checks so far, nothing needed doing yet.':'Starts once the academy is finished and live trading begins.')+'</span>';tbl('matrix',['market','chart price','pipe price','sources','24h','regime','scouts','predictors','pipe','quant score','final','decision','open'],
+function matrix(){const s=S;heat();const fa=s.fast||{};$('fastlog').innerHTML='<div class=stat style="margin-bottom:8px"><div><b class="big pp">'+(fa.decisions_min||0)+'</b><span>decisions in the last minute</span></div><div><b class=big>'+(fa.ms==null?'-':fa.ms+' ms')+'</b><span>time to decide</span></div><div><b class=big>'+(fa.actions_min||0)+'</b><span>actions in the last minute</span></div><div><b class=big>'+(fa.trades_hour||0)+'</b><span>trades this hour</span></div></div>'+(fa.actions||[]).map(a=>'<div><span class=mut>'+new Date(a.t*1000).toLocaleTimeString()+'</span> '+esc(a.text)+'</div>').join('')||'<span class=mut>'+(fa.ticks?fa.ticks+' fast checks so far, nothing needed doing yet.':'Starts once the academy is finished and live trading begins.')+'</span>';tbl('matrix',['market','chart price','pipe price','sources','24h','regime','scouts','predictors','pipe','quant score','final','decision','open'],
 s.symbols.map(sym=>{const c=coinOf(sym)||{},v=votes(sym),d=(s.decisions||[]).find(x=>x.symbol==sym)||{},r=s.regimes[sym]||{},o=s.open_trades.filter(t=>t.symbol==sym).length;
 const vv=n=>n==null?'<span class=mut>0</span>':'<span class='+cls(n)+'>'+(n>0?'+':'')+n+'</span>';
 return['<b>'+sym+'</b>',px(s.prices[sym]),px(c.price),c.sources||'-',pct(c.chg24),esc(r.label||'-')+(r.vol_high?' ⚡':''),vv(v.scout),vv(v.predict),vv(v.platform),f(d.quant),f(d.final),'<span class=mut>'+esc(d.result||'-')+'</span>',o]}));
@@ -415,7 +423,8 @@ function flow(){const s=S;tbl('flowt',['market','buy votes','sell votes','net','
 return['<b>'+sym+'</b>','<span class=up>'+b+'</span>','<span class=dn>'+se+'</span>','<span class='+cls(b-se)+'>'+(b-se)+'</span>',b>se*1.5?'<span class=up>buy cluster</span>':se>b*1.5?'<span class=dn>sell cluster</span>':'<span class=mut>mixed</span>']}));
 tbl('research',['market','pipe price','exchanges','disagree','funding','USD premium','24h'],s.symbols.map(sym=>{const c=coinOf(sym)||{};return['<b>'+sym+'</b>',px(c.price),c.sources||'-',c.spread==null?'-':f(c.spread*100,3)+'%',c.funding==null?'-':f(c.funding*100,4)+'%',pct(c.usd_premium,3),pct(c.chg24)]}));
 $('feed2').innerHTML=feedHTML(s)}
-function renderPipe(){if(cur!='pipe')return;const p=S.pipe;if(p){const k=(n,l,c)=>'<div><b class="big '+(c||'')+'">'+n+'</b><span>'+l+'</span></div>';
+function lanesHTML(p){const now=Date.now()/1000;return (p.lanes||[]).map(l=>'<div class=lane><span class=pp>'+l.lane.toUpperCase()+'</span><br><b>'+l.items_min+'</b> <span class=mut>items/min</span><br><span class=mut>'+l.ok+'/'+l.sources+' sources OK'+(l.fail?' · <span class=dn>'+l.fail+' fail</span>':'')+'<br>'+l.workers+' workers · '+(l.last?Math.round(now-l.last)+'s ago':'starting')+'</span><div class=flow></div></div>').join('')+'<div class=merge>▼ all six merge into ONE pipe → '+(p.sources||0)+' sources · '+p.live+' live feeds → agents, council, fast lane ▼</div>'}
+function renderPipe(){if(cur!='pipe')return;const p=S.pipe;if(p){$('lanes').innerHTML=lanesHTML(p);const k=(n,l,c)=>'<div><b class="big '+(c||'')+'">'+n+'</b><span>'+l+'</span></div>';
 $('pstat').innerHTML=k(p.sources||0,'distinct sources answering (platforms + news publishers)','pp')+k(p.publishers||0,'news publishers seen')+k(p.news_per_hour||0,'new stories in the last hour')+k(p.live,'live feeds (answered in last 15 min)','pp')+k(p.declared,'feeds requested')+k(p.providers_ok+' / '+p.providers,'providers answering','up')+k(p.providers_failing,'providers failing',p.providers_failing?'dn':'')+(p.warming_up?k('…','first round still loading'):'');
 tbl('pcat',['category','live feeds'],Object.entries(p.by_cat).sort((a,b)=>b[1]-a[1]).map(([c,n])=>[c,'<b>'+n+'</b>']))}
 if(!P)return;tbl('pprov',['provider','type','status','feeds','ms','error'],P.providers.map(r=>[esc(r.name),r.cat,r.ok==null?'<span class=mut>waiting</span>':r.ok?'<span class=up>OK</span>':'<span class=dn>FAIL</span>',r.n,r.ms,'<span class=mut>'+esc(r.err)+'</span>']));

@@ -393,8 +393,18 @@ EXCH = [("upbit", x_upbit, 60), ("bithumb", x_bithumb, 60), ("coinone", x_coinon
 USDQ = {"USD", "USDT", "USDC"}
 
 
+ECON_TOPIC_START = "Goldman Sachs forecast"          # TOPICS from here on are analysis firms + economy
+ECON_RSS = {"motley-fool", "kiplinger", "coinshares", "glassnode", "cryptoquant", "seekingalpha-news", "zerohedge",
+            "calculatedrisk", "wolfstreet", "mish", "economist-markets", "bls", "bea", "fed-speeches", "fed-monetary",
+            "ecb-blog", "tradingeconomics", "abs-australia", "statcan", "ons-uk", "sec", "cftc", "bank-of-england",
+            "imf", "boj", "investing-economy", "cnbc-economy", "bloomberg-economics", "guardian-economics", "nyt-economy"}
+
+
 def install(pipe):
     """Adds every job above to an existing MarketPipe."""
+    k = TOPICS.index(ECON_TOPIC_START) if ECON_TOPIC_START in TOPICS else len(TOPICS)
+    pipe.econ_jobs = {f"gnews:{t}" for t in TOPICS[k:]} | {"news:" + s for s in ECON_RSS} | \
+        {"news:fed", "news:ecb", "news:economist-finance"}
     pipe.publishers = set()            # every distinct news publisher ever seen (Google News names each one)
 
     def fx(ccy):
