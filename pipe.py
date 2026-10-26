@@ -221,19 +221,19 @@ def p_coinlore(d):
 
 
 PRICE = [  # (name, url, parser, poll seconds)
-    ("okx", "https://www.okx.com/api/v5/market/tickers?instType=SPOT", p_okx, 30),
-    ("bybit", "https://api.bybit.com/v5/market/tickers?category=spot", p_bybit, 30),
-    ("coinbase", "https://api.coinbase.com/v2/exchange-rates?currency=USD", p_coinbase, 30),
-    ("kraken", "https://api.kraken.com/0/public/Ticker", p_kraken, 45),
-    ("kucoin", "https://api.kucoin.com/api/v1/market/allTickers", p_kucoin, 45),
-    ("gate", "https://api.gateio.ws/api/v4/spot/tickers", p_gate, 60),
-    ("bitget", "https://api.bitget.com/api/v2/spot/market/tickers", p_bitget, 45),
-    ("mexc", "https://api.mexc.com/api/v3/ticker/24hr", p_bin, 60),
-    ("htx", "https://api.huobi.pro/market/tickers", p_htx, 45),
-    ("cryptocom", "https://api.crypto.com/exchange/v1/public/get-tickers", p_cdc, 45),
-    ("bitfinex", "https://api-pub.bitfinex.com/v2/tickers?symbols=ALL", p_bitfinex, 60),
-    ("bitstamp", "https://www.bitstamp.net/api/v2/ticker/", p_bitstamp, 60),
-    ("gemini", "https://api.gemini.com/v1/pricefeed", p_gemini, 45),
+    ("okx", "https://www.okx.com/api/v5/market/tickers?instType=SPOT", p_okx, 90),
+    ("bybit", "https://api.bybit.com/v5/market/tickers?category=spot", p_bybit, 90),
+    ("coinbase", "https://api.coinbase.com/v2/exchange-rates?currency=USD", p_coinbase, 90),
+    ("kraken", "https://api.kraken.com/0/public/Ticker", p_kraken, 120),
+    ("kucoin", "https://api.kucoin.com/api/v1/market/allTickers", p_kucoin, 180),
+    ("gate", "https://api.gateio.ws/api/v4/spot/tickers", p_gate, 240),
+    ("bitget", "https://api.bitget.com/api/v2/spot/market/tickers", p_bitget, 180),
+    ("mexc", "https://api.mexc.com/api/v3/ticker/24hr", p_bin, 240),
+    ("htx", "https://api.huobi.pro/market/tickers", p_htx, 180),
+    ("cryptocom", "https://api.crypto.com/exchange/v1/public/get-tickers", p_cdc, 180),
+    ("bitfinex", "https://api-pub.bitfinex.com/v2/tickers?symbols=ALL", p_bitfinex, 180),
+    ("bitstamp", "https://www.bitstamp.net/api/v2/ticker/", p_bitstamp, 180),
+    ("gemini", "https://api.gemini.com/v1/pricefeed", p_gemini, 120),
     ("coingecko", "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250", p_coingecko, 900),
     ("coinlore", "https://api.coinlore.net/api/tickers/?start=0&limit=100", p_coinlore, 180),
 ]
@@ -481,7 +481,8 @@ class MarketPipe:
                 k = t.lower()
                 if k not in seen:
                     seen.add(k)
-                    add.append({"t": now, "src": pub, "title": t, "s": self.tone(t), "via": feed_id})
+                    add.append({"t": now, "src": pub, "title": t, "s": self.tone(t), "via": feed_id,
+                                "coins": self.tag_coins(t)})
             self.headlines = (add + self.headlines)[:2500]
             if add:
                 self.event.set()
@@ -491,6 +492,15 @@ class MarketPipe:
         cat = "social" if feed_id.startswith("reddit:") else "news"
         self._put(feed_id, cat, feed_id.split(":", 1)[0], f"{feed_id.split(':', 1)[1]} headlines", len(items),
                   statistics.mean(moods) if moods else 0.0, {"latest": items[0][0] if items else "", "new": len(add)})
+
+    _coin_pats = None
+
+    @classmethod
+    def tag_coins(cls, title):
+        if cls._coin_pats is None:
+            cls._coin_pats = [(c, re.compile(r"\b(" + c.lower() + ("|" + NAMES[c] if c in NAMES else "") + r")\b", re.I))
+                              for c in COINS]
+        return tuple(c for c, p in cls._coin_pats if p.search(title))
 
     @staticmethod
     def tone(title):
@@ -570,9 +580,22 @@ class MarketPipe:
         with self.lock:
             return [f for f in self.feeds.values() if now - f["ts"] < LIVE_WINDOW]
 
+    def _index(self, feeds):
+        """coin -> (price feeds, derivative feeds), built once per feed list instead of scanning it per coin."""
+        c = getattr(self, "_idx", None)
+        if c is not None and c[0] is feeds:
+            return c[1]
+        idx = {}
+        for f in feeds:
+            if f["cat"] in ("crypto", "derivatives") and not f["id"].startswith("global"):
+                e = idx.setdefault(f["id"].rsplit(":", 1)[-1], ([], []))
+                e[0 if f["cat"] == "crypto" else 1].append(f)
+        self._idx = (feeds, idx)
+        return idx
+
     def consensus(self, coin, feeds=None):
         feeds = feeds if feeds is not None else self._live()
-        px = [f for f in feeds if f["cat"] == "crypto" and f["id"].endswith(":" + coin) and not f["id"].startswith("global")]
+        px, der = self._index(feeds).get(coin, ([], []))
         if not px:
             return None
         vals = [f["value"] for f in px]
@@ -582,8 +605,7 @@ class MarketPipe:
         chg = [f["chg"] for f in good if f["chg"] is not None]
         usd = [f["value"] for f in good if f["provider"] in ("coinbase", "kraken", "bitstamp", "gemini")]
         usdt = [f["value"] for f in good if f["provider"] in ("okx", "bybit", "kucoin", "gate", "bitget", "mexc", "htx", "binance")]
-        fund = [f["extra"]["funding"] for f in feeds if f["cat"] == "derivatives" and f["id"].endswith(":" + coin)
-                and f["extra"] and f["extra"].get("funding") is not None]
+        fund = [f["extra"]["funding"] for f in der if f["extra"] and f["extra"].get("funding") is not None]
         return {"coin": coin, "price": statistics.median(vals), "sources": len(vals),
                 "spread": (max(vals) / min(vals) - 1) if len(vals) > 1 else 0.0,
                 "chg24": statistics.median(chg) if chg else None,
@@ -595,9 +617,8 @@ class MarketPipe:
         now = time.time()
         with self.lock:
             hs = [h for h in self.headlines if now - h["t"] < hours * 3600]
-        if coin:
-            pat = re.compile(r"\b(" + coin.lower() + ("|" + NAMES[coin] if coin in NAMES else "") + r")\b", re.I)
-            hs = [h for h in hs if pat.search(h["title"])]
+        if coin:                                  # coins are tagged once when the headline arrives (fast)
+            hs = [h for h in hs if coin in h.get("coins", ())]
         w = getattr(self, "pub_weight", None) or (lambda p: 1.0)
         sc = [(h["s"], w(h["src"])) for h in hs if h["s"]]
         tw = sum(x[1] for x in sc)

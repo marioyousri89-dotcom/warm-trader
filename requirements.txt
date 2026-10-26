@@ -3,3 +3,4 @@ anthropic>=0.40      # Claude as chief strategist, world-events analyst, enginee
 # moomoo-api         # optional: only for the moomoo SIMULATED-account mirror (also needs the OpenD gateway running)
 
 websocket-client
+numpy

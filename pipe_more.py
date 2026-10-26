@@ -379,16 +379,16 @@ def x_coinpaprika():
     return out
 
 
-EXCH = [("upbit", x_upbit, 60), ("bithumb", x_bithumb, 60), ("coinone", x_coinone, 90), ("korbit", x_korbit, 120),
-        ("bitbank", x_bitbank, 90), ("bitflyer", x_bitflyer, 90), ("coincheck", x_coincheck, 120),
-        ("btcmarkets", x_btcmarkets, 90), ("coinspot", x_coinspot, 120), ("independentreserve", x_indreserve, 180),
-        ("coinjar", x_coinjar, 180), ("luno", x_luno, 120), ("valr", x_valr, 120), ("bitso", x_bitso, 120),
-        ("mercadobitcoin", x_mercado, 120), ("btcturk", x_btcturk, 120), ("paribu", x_paribu, 120),
-        ("indodax", x_indodax, 120), ("bitkub", x_bitkub, 120), ("coindcx", x_coindcx, 120), ("wazirx", x_wazirx, 120),
-        ("bitvavo", x_bitvavo, 90), ("bitpanda", x_bitpanda, 120), ("whitebit", x_whitebit, 90), ("poloniex", x_poloniex, 120),
-        ("bitmart", x_bitmart, 120), ("coinex", x_coinex, 120), ("xt", x_xt, 120), ("lbank", x_lbank, 120),
-        ("bingx", x_bingx, 120), ("ascendex", x_ascendex, 120), ("hitbtc", x_hitbtc, 120), ("probit", x_probit, 180),
-        ("bitrue", x_bitrue, 120), ("digifinex", x_digifinex, 180), ("cryptocompare", x_cryptocompare, 300),
+EXCH = [("upbit", x_upbit, 180), ("bithumb", x_bithumb, 180), ("coinone", x_coinone, 180), ("korbit", x_korbit, 180),
+        ("bitbank", x_bitbank, 180), ("bitflyer", x_bitflyer, 180), ("coincheck", x_coincheck, 180),
+        ("btcmarkets", x_btcmarkets, 180), ("coinspot", x_coinspot, 180), ("independentreserve", x_indreserve, 180),
+        ("coinjar", x_coinjar, 180), ("luno", x_luno, 180), ("valr", x_valr, 180), ("bitso", x_bitso, 180),
+        ("mercadobitcoin", x_mercado, 180), ("btcturk", x_btcturk, 180), ("paribu", x_paribu, 180),
+        ("indodax", x_indodax, 180), ("bitkub", x_bitkub, 180), ("coindcx", x_coindcx, 180), ("wazirx", x_wazirx, 180),
+        ("bitvavo", x_bitvavo, 180), ("bitpanda", x_bitpanda, 180), ("whitebit", x_whitebit, 180), ("poloniex", x_poloniex, 180),
+        ("bitmart", x_bitmart, 180), ("coinex", x_coinex, 180), ("xt", x_xt, 180), ("lbank", x_lbank, 180),
+        ("bingx", x_bingx, 180), ("ascendex", x_ascendex, 180), ("hitbtc", x_hitbtc, 180), ("probit", x_probit, 180),
+        ("bitrue", x_bitrue, 180), ("digifinex", x_digifinex, 180), ("cryptocompare", x_cryptocompare, 300),
         ("coinpaprika", x_coinpaprika, 900)]
 USDQ = {"USD", "USDT", "USDC"}
 

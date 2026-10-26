@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /app
-RUN pip install --no-cache-dir anthropic websocket-client
+RUN pip install --no-cache-dir anthropic websocket-client numpy
 COPY *.py ./
 ENV PYTHONUNBUFFERED=1
 # Secrets go in your host's environment settings, NEVER in this file:
