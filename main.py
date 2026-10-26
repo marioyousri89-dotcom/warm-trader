@@ -29,6 +29,9 @@ def main():
     args = ap.parse_args()
 
     cfg = Config(seed=args.seed, db_path=args.db, keep_brain=args.keep, use_llm=not args.no_llm)
+    syms = os.environ.get("SYMBOLS") or ("BTC,ETH,SOL,XRP,BNB,DOGE,ADA,LINK" if args.live else "")
+    if syms:
+        cfg.symbols = tuple(s.strip().upper() for s in syms.split(",") if s.strip())
     eng = Engine(cfg, live=args.live)
     print(f"[start] {sum(len(s) for _, _, s in __import__('agents').GROUPS)} agents | "
           f"mode: {eng.market_note} | "

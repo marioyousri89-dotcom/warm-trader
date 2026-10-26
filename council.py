@@ -21,7 +21,9 @@ class Council:
     def __init__(self, engine, gate=0.85, floor=0.55, wait_cycles=2):
         self.e = engine
         self.gate, self.floor, self.wait = gate, floor, wait_cycles
-        self.human_review = True              # owner can switch off: then medium cases auto-approve (paper only)
+        import os
+        self.practice = os.environ.get("PRACTICE", "1") == "1"   # practice mode: learn fast on paper
+        self.human_review = not self.practice  # owner can switch it on from the COUNCIL page
         self.queue = {}                       # id -> pending hand-off
         self.answers = deque()                # owner YES/NO waiting to be applied on the engine thread
         self.log = deque(maxlen=60)
@@ -39,7 +41,10 @@ class Council:
         q = lambda p: s[min(len(s) - 1, int(p * len(s)))]
         self.gate = round(min(0.90, max(0.60, q(0.80))), 3)
         self.floor = round(min(self.gate - 0.05, max(0.40, q(0.35))), 3)
-        self.calibration = {"ideas": len(s), "gate": self.gate, "floor": self.floor}
+        if self.practice:                     # practice: more paper trades = faster, real feedback per team
+            self.floor = round(max(0.40, q(0.15)), 3)
+            self.gate = round(max(self.floor + 0.05, min(self.gate, q(0.60))), 3)
+        self.calibration = {"ideas": len(s), "gate": self.gate, "floor": self.floor, "practice": self.practice}
 
     # ---------------------------------------------------------------- the five seats
     def review(self, sym, side, conf, ctx):
@@ -159,7 +164,7 @@ class Council:
         return go
 
     def state(self):
-        return {"gate": self.gate, "floor": self.floor, "calibration": self.calibration, "human_review": self.human_review, "counts": self.n,
+        return {"gate": self.gate, "floor": self.floor, "calibration": self.calibration, "practice": self.practice, "human_review": self.human_review, "counts": self.n,
                 "queue": [{k: q[k] for k in ("id", "cycle", "desk", "symbol", "side", "score", "seats", "expires")}
                           for q in self.queue.values()],
                 "log": list(self.log)[:30]}

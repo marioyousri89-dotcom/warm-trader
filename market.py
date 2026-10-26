@@ -15,7 +15,7 @@ from sessions import SIM_VOL, session_at
 from collections import deque
 
 REG = {"up": (0.0015, 0.006), "down": (-0.0015, 0.006), "range": (0.0, 0.004), "volatile": (0.0, 0.015)}
-START = {"BTC": 60000.0, "ETH": 3000.0, "SOL": 150.0}
+START = {"BTC": 60000.0, "ETH": 3000.0, "SOL": 150.0, "XRP": 2.0, "BNB": 600.0, "DOGE": 0.15, "ADA": 0.6, "LINK": 15.0}
 H = 3
 
 

@@ -301,6 +301,12 @@ class MarketPipe:
         self.declared |= {"feargreed:index", "mempool:fastest", "mempool:hour", "mempool:difficulty", "blockchain:hashrate",
                           "blockchain:tx24h", "stablecoins:total", "global:mcap", "global:btc_dominance"} | \
             {f"defillama:{i}" for i in range(20)}
+        self.publishers = set()
+        try:
+            from pipe_more import install          # hundreds more sources: news first
+            install(self)
+        except Exception as e:
+            print("[pipe] expansion failed to load:", e)
         self.started = time.time()
         if start:
             threading.Thread(target=self._loop, daemon=True).start()
@@ -312,12 +318,12 @@ class MarketPipe:
         self.jobs.append((name, fn))
 
     def _loop(self):
-        pool = ThreadPoolExecutor(max_workers=8)
+        pool = ThreadPoolExecutor(max_workers=14)
         running = set()
         stagger = 0.0
         for name, _ in self.jobs:            # spread the first round over ~40 s
             self.providers[name]["due"] = time.time() + stagger
-            stagger += 0.4
+            stagger += 0.35
         while True:
             now = time.time()
             for name, fn in self.jobs:
@@ -431,14 +437,28 @@ class MarketPipe:
             t = re.sub(r"<[^>]+>|\s+", " ", t).strip()[:180]
             if t:
                 fresh.append(t)
+        self.add_headlines([(t, src) for t in fresh], ("reddit:" + src[2:]) if src.startswith("r/") else "news:" + src)
+        return len(fresh)
+
+    def add_headlines(self, items, feed_id):
+        """items: [(title, publisher)]. New titles go to the top of the shared news tape."""
         now = time.time()
         with self.lock:
-            seen = {h["title"] for h in self.headlines}
-            add = [{"t": now, "src": src, "title": t, "s": self.tone(t)} for t in fresh if t not in seen]
-            self.headlines = (add + self.headlines)[:400]
-        mood = statistics.mean([self.tone(t) for t in fresh]) if fresh else 0.0
-        self._put("news:" + src, "news", src, f"{src} headlines", len(fresh), mood, {"latest": fresh[0] if fresh else ""})
-        return len(fresh)
+            seen = self._seen if hasattr(self, "_seen") else set(h["title"] for h in self.headlines)
+            self._seen = seen
+            add = []
+            for t, pub in items:
+                k = t.lower()
+                if k not in seen:
+                    seen.add(k)
+                    add.append({"t": now, "src": pub, "title": t, "s": self.tone(t), "via": feed_id})
+            self.headlines = (add + self.headlines)[:2500]
+            if len(seen) > 20000:
+                self._seen = set(h["title"].lower() for h in self.headlines)
+        moods = [self.tone(t) for t, _ in items]
+        cat = "social" if feed_id.startswith("reddit:") else "news"
+        self._put(feed_id, cat, feed_id.split(":", 1)[0], f"{feed_id.split(':', 1)[1]} headlines", len(items),
+                  statistics.mean(moods) if moods else 0.0, {"latest": items[0][0] if items else "", "new": len(add)})
 
     @staticmethod
     def tone(title):
@@ -564,7 +584,11 @@ class MarketPipe:
         provs = list(self.providers.values())
         fng = next((f for f in feeds if f["id"] == "feargreed:index"), None)
         top = [c for c in (self.consensus(k, feeds) for k in COINS[:8]) if c]
+        ok = [p for p in provs if p["ok"]]
         return {"declared": len(self.declared), "live": len(feeds), "by_cat": by,
+                "publishers": len(self.publishers),
+                "sources": len([p for p in ok if not p["name"].startswith("gnews:")]) + len(self.publishers),
+                "news_per_hour": self.news_mood(hours=1)["n"],
                 "providers_ok": sum(1 for p in provs if p["ok"]), "providers": len(provs),
                 "providers_failing": sum(1 for p in provs if p["ok"] is False),
                 "top": top, "fng": fng and {"value": fng["value"], "label": fng["label"]},
@@ -576,10 +600,11 @@ class MarketPipe:
         feeds = self._live()
         now = time.time()
         with self.lock:
-            heads = list(self.headlines[:80])
+            heads = list(self.headlines[:200])
             allf = sorted(self.feeds.values(), key=lambda f: f["id"])
         coins = [c for c in (self.consensus(k, feeds) for k in COINS) if c]
-        return {"summary": self.summary(), "coins": coins,
+        return {"summary": self.summary(), "coins": coins, "publishers": sorted(self.publishers)[:1500],
+                "newtokens": [f for f in feeds if f["cat"] == "newtokens"],
                 "world": sorted([f for f in feeds if f["cat"] == "world"], key=lambda f: f["extra"]["kind"]),
                 "fx": sorted([f for f in feeds if f["cat"] == "fx"], key=lambda f: f["id"]),
                 "prediction": [f for f in feeds if f["cat"] == "prediction"],
@@ -604,6 +629,11 @@ class MarketPipe:
             if nm["scored"] >= 3 and abs(nm["mood"]) >= 0.3:
                 out.append(("pipe_news", s, 1 if nm["mood"] > 0 else -1, min(0.9, 0.4 + abs(nm["mood"]) / 2),
                             f"{nm['scored']} scored headlines, mood {nm['mood']:+.2f}"))
+            hr, day = self.news_mood(s, hours=1), self.news_mood(s, hours=24)
+            base = max(1.0, day["n"] / 24)
+            if hr["n"] >= 5 and hr["n"] >= 3 * base and abs(hr["mood"]) >= 0.2:      # sudden burst of stories
+                out.append(("pipe_buzz", s, 1 if hr["mood"] > 0 else -1, min(0.85, 0.5 + abs(hr["mood"]) / 2),
+                            f"news burst: {hr['n']} stories in 1h vs {base:.1f}/h normal, mood {hr['mood']:+.2f}"))
             if c and c["funding"] is not None and (c["funding"] > 0.0003 or c["funding"] < -0.0001):
                 out.append(("pipe_funding", s, -1 if c["funding"] > 0 else 1, 0.5, f"avg funding {c['funding']:+.5f} (crowded side fades)"))
             if c and c["usd_premium"] is not None and abs(c["usd_premium"]) > 0.0012:
