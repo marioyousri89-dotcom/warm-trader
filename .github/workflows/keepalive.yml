@@ -1,0 +1,11 @@
+name: keep-swarm-trader-awake
+# Runs in GitHub's cloud every 10 minutes: pings the app so the free Render server never sleeps (24/7, no laptop needed).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 60 https://swarm-trader.onrender.com/healthz || curl -fsS --max-time 90 https://swarm-trader.onrender.com/healthz

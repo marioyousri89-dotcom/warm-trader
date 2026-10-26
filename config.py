@@ -34,7 +34,7 @@ class Config:
     daily_loss_limit: float = 0.03
     max_drawdown: float = 0.12       # kill switch
     cycles_per_day: int = 96
-    fee: float = 0.0005
+    fee: float = 0.0010                # OKX taker fee (the platform chosen for live trading)
     slippage: float = 0.0002
     stop_atr: float = 1.5
     target_atr: float = 2.0
