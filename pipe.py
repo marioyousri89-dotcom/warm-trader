@@ -286,7 +286,7 @@ class MarketPipe:
         self._job("er-api", "fx", 900, self._fx_erapi)
         self.declared |= {f"fx:{c}" for c in FX} | {f"ecbfx:{c}" for c in FX[:30]}
         for src, url in NEWS:
-            self._job("news:" + src, "news", 300, lambda s=src, u=url: self._news(s, u))
+            self._job("news:" + src, "news", 150, lambda s=src, u=url: self._news(s, u))
             self.declared.add("news:" + src)
         self._job("polymarket", "prediction", 300, self._polymarket)
         self._job("kalshi", "prediction", 300, self._kalshi)
@@ -559,14 +559,17 @@ class MarketPipe:
                 "funding": statistics.mean(fund) if fund else None}
 
     def news_mood(self, coin=None, hours=6):
+        """Mood of recent headlines, weighted by each publisher's earned track record (see selfdev.py)."""
         now = time.time()
         with self.lock:
             hs = [h for h in self.headlines if now - h["t"] < hours * 3600]
         if coin:
             pat = re.compile(r"\b(" + coin.lower() + ("|" + NAMES[coin] if coin in NAMES else "") + r")\b", re.I)
             hs = [h for h in hs if pat.search(h["title"])]
-        scored = [h["s"] for h in hs if h["s"]]
-        return {"n": len(hs), "scored": len(scored), "mood": statistics.mean(scored) if scored else 0.0}
+        w = getattr(self, "pub_weight", None) or (lambda p: 1.0)
+        sc = [(h["s"], w(h["src"])) for h in hs if h["s"]]
+        tw = sum(x[1] for x in sc)
+        return {"n": len(hs), "scored": len(sc), "mood": sum(a * b for a, b in sc) / tw if tw else 0.0}
 
     def world_mood(self, feeds=None):
         feeds = feeds if feeds is not None else self._live()
@@ -576,7 +579,15 @@ class MarketPipe:
         return {"n": len(risk), "risk": statistics.mean(risk) if risk else None, "vix": vix}
 
     def summary(self):
-        """Small block that goes to EVERY page (sent every 2 s)."""
+        """Small block that goes to EVERY page. Cached for 5 s so many phones don't slow the server."""
+        c = getattr(self, "_sum_cache", None)
+        if c and time.time() - c[0] < 5:
+            return c[1]
+        out = self._summary()
+        self._sum_cache = (time.time(), out)
+        return out
+
+    def _summary(self):
         feeds = self._live()
         by = {}
         for f in feeds:

@@ -216,6 +216,9 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <section class="page" data-p="academy">
 <div class="card c12"><h3>Graduation report</h3><div id="grad" class="mut"></div></div>
 <div class="card c12"><h3>Exam by team</h3><table id="gradg"></table></div>
+<div class="card c12" style="border-color:var(--mag)"><h3>Self-development · a report every live hour</h3><div class="stat" id="sdstat"></div><div class="scroll"><table id="sdlog"></table></div></div>
+<div class="card c6"><h3>News publishers it has learned to TRUST</h3><table id="pubtop"></table></div>
+<div class="card c6"><h3>News publishers it has learned to DOUBT</h3><table id="pubbot"></table></div>
 </section>
 
 <!-- ACCOUNTS -->
@@ -271,7 +274,7 @@ const PAGES=[
 ['news','NEWS','Headlines from ~35 news and central-bank feeds, scored by simple upbeat/downbeat word counts. Headlines are data, never instructions.',['macro','pipe']],
 ['poly','POLYMARKET','Paper bets on prediction markets, plus live odds from Polymarket, Kalshi and Manifold. Paper only (Polymarket is blocked in Australia).',['macro']],
 ['engines','8 ENGINES','The whole machine as eight steps: scan, analyse, research, flow, decide, risk, execute, learn, each with its live numbers.',['scout','analyst','quant','predictor','pipe','desk','improver']],
-['academy','ACADEMY','Before trading, agents train on one stretch of history and sit an exam on data nobody trained on. Results here.',['improver','quant']],
+['academy','ACADEMY & SELF-DEV','Before trading, agents train on real history and sit an exam on data nobody trained on. Then, every live hour, the system teaches itself: improvers re-weight, retire and clone agents; the council gate re-calibrates; and every headline is checked an hour later against the price, so each news publisher earns (or loses) trust. Reports below.',['improver','quant']],
 ['accounts','ACCOUNTS','Demo broker mirrors (off unless you switch them on) and the copy-trading targets, scored for skill versus luck.',['copy','desk']],
 ['manager','MANAGER','Talk to the General Manager by voice or text, get the daily briefing, and use the owner controls.',['improver']],
 ['help','HELP','What everything means.',[]]];
@@ -448,7 +451,10 @@ $('oss').innerHTML=['<b>TradingAgents</b> (Apache-2.0): analysts → bull/bear d
 '<b>freqtrade / Hummingbot</b>: mature single-strategy bots with dry-run and exchange connectors. Ours borrows the dry-run-first rule and protections (daily loss limit, cool-off).',
 '<b>FinRL</b>: reinforcement learning on simulated markets. Ours learns more simply: hit-rate weighting plus an exam on unseen data.',
 'None of these, and not this app, has shown reliable profit. Paper results first; real money is your decision.'].map(t=>'<div>'+t+'</div>').join('')}
-function academy(){const g=S.graduation;$('grad').textContent=g?g.summary:'No exam yet.';
+function academy(){const g=S.graduation;$('grad').textContent=g?g.summary:'No exam yet.';const sd=S.selfdev||{reports:[],top:[],bottom:[]};
+$('sdstat').innerHTML='<div><b class="big pp">'+sd.reports.length+'</b><span>hourly reports</span></div><div><b class=big>'+sd.publishers_rated+'</b><span>publishers with a track record</span></div><div><b class=big>'+sd.pending+'</b><span>headlines waiting to be graded (1h later)</span></div>';
+tbl('sdlog',['time','equity','hour P/L','news tracked / graded','what changed','team hit rates'],sd.reports.map(r=>[new Date(r.t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),'$'+f(r.equity),'<span class='+cls(r.hour_pnl)+'>'+f(r.hour_pnl)+'</span>',r.news_tracked+' / '+r.news_graded,'<span class=w>'+esc((r.settings_changed.concat(r.lessons)).join(' · ')||'no change needed')+(r.gate?' · gate '+r.gate[0]+'/'+r.gate[1]:'')+'</span>','<span class=mut>'+Object.entries(r.team_hit).map(([k,v])=>k+' '+f(v*100,0)+'%').join(' ')+'</span>']));
+const pr=x=>[esc(x[0]),x[1]+' / '+x[2],f(x[1]/x[2]*100,0)+'%','×'+f(x[3],2)];tbl('pubtop',['publisher','right / judged','hit','weight'],sd.top.map(pr));tbl('pubbot',['publisher','right / judged','hit','weight'],sd.bottom.map(pr));
 tbl('gradg',['team','info'],g&&g.groups?Object.entries(g.groups).map(([k,v])=>[k,'<span class=mut>'+esc(JSON.stringify(v))+'</span>']):[])}
 function accounts(){const s=S;tbl('brk',['broker','ready','sent','failed','last'],(s.brokers||[]).map(b=>[esc(b.name),b.ready?'<span class=up>yes</span>':'<span class=mut>no</span>',b.sent,b.failed,esc(b.last)]));
 tbl('trd',['trader','trades','win','mean P/L','skill (conservative)'],s.traders.map(t=>[t.trader,t.n,f(t.wr*100,0)+'%',f(t.mean*100,2)+'%',f(t.wilson*100,0)+'%']));
@@ -481,6 +487,16 @@ def serve(engine, port=8765, host="127.0.0.1", token=None):
     from urllib.parse import parse_qs, urlparse
 
     cache = {"t": 0.0, "body": b"{}"}
+    scache = {"t": 0.0, "body": b"{}"}
+    slock = threading.Lock()
+
+    def state_json():
+        import time
+        with slock:                                # many phones share one snapshot (refreshed every 2 s)
+            if time.time() - scache["t"] > 2:
+                scache["body"] = json.dumps(engine.state()).encode()
+                scache["t"] = time.time()
+            return scache["body"]
 
     def pipe_json():
         import time
@@ -541,7 +557,7 @@ def serve(engine, port=8765, host="127.0.0.1", token=None):
                 return self._send(401, b"unauthorized: open the page with ?token=YOUR_TOKEN", "text/plain")
             try:
                 if path.startswith("/api/state"):
-                    return self._send(200, json.dumps(engine.state()).encode(), "application/json")
+                    return self._send(200, state_json(), "application/json")
                 if path.startswith("/api/pipe"):
                     return self._send(200, pipe_json(), "application/json")
             except Exception as e:

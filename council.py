@@ -97,8 +97,9 @@ class Council:
             entry["verdict"] = "VETO (risk)"
             self.log.appendleft(entry)
             return "no", risk_why
-        if self.e.phase != "live":
-            self.scores.append(score)
+        self.scores.append(score)                 # academy AND live ideas: the gate re-calibrates every hour
+        if len(self.scores) > 3000:
+            del self.scores[:1000]
         live_owner = self.e.phase == "live" and self.human_review
         if score >= self.gate or (score >= self.floor and not live_owner):
             self.n["auto"] += 1

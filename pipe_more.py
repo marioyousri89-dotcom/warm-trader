@@ -32,7 +32,19 @@ TOPICS = ["stock market today", "Federal Reserve", "inflation CPI", "interest ra
           "dollar index", "treasury yields", "bitcoin mining", "ethereum upgrade", "memecoin", "DeFi",
           "Middle East oil markets", "Russia Ukraine markets", "jobs report payrolls", "PMI manufacturing",
           "bond market", "Japanese yen", "Chinese yuan", "crypto liquidations", "bitcoin ETF", "crypto regulation Australia",
-          "Saudi Arabia economy", "India stock market", "Korea stock market", "Europe stocks", "Wall Street"]
+          "Saudi Arabia economy", "India stock market", "Korea stock market", "Europe stocks", "Wall Street",
+          # analysis companies, research desks, rating agencies
+          "Goldman Sachs forecast", "JPMorgan strategist outlook", "Morgan Stanley outlook", "Bank of America research",
+          "Citi strategist", "UBS outlook", "Barclays analysts", "Deutsche Bank research", "BlackRock outlook",
+          "Morningstar analysis", "Moody's rating", "S&P Global Ratings", "Fitch Ratings", "analyst price target",
+          "analyst upgrade downgrade", "Standard Chartered bitcoin forecast", "Bernstein crypto", "Glassnode on-chain",
+          "CryptoQuant data", "Kaiko research", "Messari report", "CoinShares fund flows", "Galaxy Digital research",
+          "Fundstrat Tom Lee", "VanEck crypto", "ARK Invest", "Bloomberg Intelligence",
+          # economy and official data
+          "US CPI report", "US PPI producer prices", "US GDP report", "jobless claims", "retail sales report",
+          "consumer confidence", "ISM services", "FOMC minutes", "Fed chair speech", "ECB Lagarde",
+          "Bank of England rates", "RBA Bullock", "Australia CPI", "Australia jobs data", "China PMI", "Japan inflation",
+          "eurozone inflation", "UK inflation", "OPEC+ output", "IMF World Economic Outlook", "World Bank forecast"]
 REGIONS = [("en-US", "US", "US:en"), ("en-AU", "AU", "AU:en"), ("en-GB", "GB", "GB:en"), ("en-IN", "IN", "IN:en"),
            ("en-SG", "SG", "SG:en")]
 
@@ -77,6 +89,21 @@ RSS = [
     ("theblock-latest", "https://www.theblock.co/rss.xml?category=latest"),
     ("benzinga", "https://www.benzinga.com/feed"), ("fxempire", "https://www.fxempire.com/api/v1/en/articles/rss/news"),
     ("financial-post", "https://financialpost.com/feed"),
+    # analysis companies / research
+    ("motley-fool", "https://www.fool.com/a/feeds/foolwatch?format=rss2&id=foolwatch&apikey=foolwatch-feed"),
+    ("kiplinger", "https://www.kiplinger.com/feeds/all"), ("coinshares", "https://blog.coinshares.com/feed"),
+    ("glassnode", "https://insights.glassnode.com/rss/"), ("cryptoquant", "https://cryptoquant.com/insights/feed"),
+    ("seekingalpha-news", "https://seekingalpha.com/feed.xml"), ("zerohedge", "https://feeds.feedburner.com/zerohedge/feed"),
+    ("calculatedrisk", "https://www.calculatedriskblog.com/feeds/posts/default"),
+    ("wolfstreet", "https://wolfstreet.com/feed/"), ("mish", "https://mishtalk.com/feed"),
+    ("economist-markets", "https://www.economist.com/finance-and-economics/rss.xml"),
+    # economy / official data
+    ("bls", "https://www.bls.gov/feed/bls_latest.rss"), ("bea", "https://apps.bea.gov/rss/rss.xml"),
+    ("fed-speeches", "https://www.federalreserve.gov/feeds/speeches.xml"),
+    ("fed-monetary", "https://www.federalreserve.gov/feeds/press_monetary.xml"),
+    ("ecb-blog", "https://www.ecb.europa.eu/rss/blog.html"), ("tradingeconomics", "https://tradingeconomics.com/rss/news.aspx"),
+    ("abs-australia", "https://www.abs.gov.au/rss.xml"), ("statcan", "https://www150.statcan.gc.ca/n1/dai-quo/rss/dai-quo-eng.xml"),
+    ("ons-uk", "https://www.ons.gov.uk/releasecalendar/rss"),
 ]
 REDDIT = ["CryptoCurrency", "Bitcoin", "ethereum", "solana", "CryptoMarkets", "wallstreetbets", "stocks", "investing",
           "Economics"]
@@ -421,15 +448,15 @@ def install(pipe):
     n = 0
     for c in COINS:
         q = f'"{c}" OR {COIN_NAMES.get(c, c)} crypto'
-        pipe._job(f"gnews:{c}", "news", 600, gnews(c, q, "en-US", "US", "US:en"))
+        pipe._job(f"gnews:{c}", "news", 420, gnews(c, q, "en-US", "US", "US:en"))
         n += 1
     for i, t in enumerate(TOPICS):
         hl, gl, ceid = REGIONS[i % len(REGIONS)]
-        pipe._job(f"gnews:{t}", "news", 600, gnews(t, t, hl, gl, ceid))
+        pipe._job(f"gnews:{t}", "news", 420, gnews(t, t, hl, gl, ceid))
     for name, url in RSS:
-        pipe._job("news:" + name, "news", 240, lambda s=name, u=url: pipe._news(s, u))
+        pipe._job("news:" + name, "news", 150, lambda s=name, u=url: pipe._news(s, u))
     for sub in REDDIT:
-        pipe._job("reddit:" + sub, "social", 600, lambda s=sub: pipe._news("r/" + s, f"https://www.reddit.com/r/{s}/hot/.rss?limit=25"))
+        pipe._job("reddit:" + sub, "social", 1800, lambda s=sub: pipe._news("r/" + s, f"https://www.reddit.com/r/{s}/hot/.rss?limit=25"))
     pipe.declared |= {f"gnews:{c}" for c in COINS} | {f"gnews:{t}" for t in TOPICS} | {"news:" + s for s, _ in RSS} | \
         {"reddit:" + s for s in REDDIT}
 

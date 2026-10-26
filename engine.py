@@ -84,6 +84,8 @@ class Engine:
         self.pipe = None                    # the MARKET PIPE (set by main); every page reads it
         from council import Council
         self.council = Council(self)        # five seats + one gate + owner hand-off
+        from selfdev import SelfDev
+        self.selfdev = SelfDev(self)        # teaches itself every live hour
         self.traders = None if live else SimTraders(self.b, self.market, cfg.seed + 4)
         self.swarm = Swarm(cfg, self.b)
         self.agg, self.risk, self.port = Aggregator(), Risk(cfg), Portfolio(cfg, self.b)
@@ -241,6 +243,8 @@ class Engine:
         cfg.t0 = self.market.cycle
         self.phase = "live"
         from council import Council
+        if self.live:                           # live: self-development every hour from now on
+            cfg.improve_every, cfg.quant_every = 1, 2
         old = self.council
         self.council = Council(self)            # live counts start clean after school
         self.council.human_review = old.human_review
@@ -339,6 +343,11 @@ class Engine:
         self._decide(c, m, prices, eq)
         if not self.swarm.frozen and (c - cfg.t0) % cfg.improve_every == 0 and c > cfg.t0:
             self.improvers.run(c)
+        if self.live and self.phase == "live":
+            try:
+                self.selfdev.hourly(c)
+            except Exception as ex:
+                self.b.add_lesson(c, "self_development", f"hourly round failed: {str(ex)[:120]}")
         if (c - cfg.t0) % cfg.cycles_per_hour == 0 and c > cfg.t0:
             self.desks.hourly(c)
             if self.phase == "live" and self.llm.on and c % cfg.cycles_per_day == 0:
@@ -520,6 +529,7 @@ class Engine:
             "mode": "live prices" if self.live else "simulated market", "market_note": self.market_note,
             "pipe": self.pipe.summary() if self.pipe else None,
             "council": self.council.state(),
+            "selfdev": self.selfdev.state(),
             "symbols": list(m.symbols), "prices": {s: round(m.last(s), 6) for s in m.symbols},
             "agents_total": len(agents), "agents_active": sum(1 for a in agents if a["active"]),
             "equity": round(last_eq, 2), "start": cfg.start_equity, "pnl": round(last_eq - cfg.start_equity, 2),
