@@ -110,7 +110,7 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <div class="kpi"><b id="tr">-</b><span>closed trades / win</span></div>
 <div class="kpi"><b id="cy">-</b><span id="mode">cycle</span></div>
 <div class="kpi"><b id="dpm">-</b><span>decisions / min</span></div>
-<span id="llm" class="chip">Claude</span><span id="risk" class="chip">risk</span><span class="chip">PAPER ONLY</span><a id="hbadge" class="chip" href="#council" style="display:none;border-color:var(--mag);color:var(--mag);text-decoration:none"></a></header>
+<span id="llm" class="chip">Claude</span><span id="risk" class="chip">risk</span><span class="chip" id="cashchip">PAPER (training)</span><a id="hbadge" class="chip" href="#council" style="display:none;border-color:var(--mag);color:var(--mag);text-decoration:none"></a></header>
 <div class="ticker" id="tick"></div>
 <nav id="nav"></nav>
 <div class="pipebar" id="pipebar" onclick="go('pipe')"><b>MARKET PIPE</b><span class="mut">starting...</span></div>
@@ -266,6 +266,23 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <div class="card c6"><h3>News publishers it has learned to DOUBT</h3><table id="pubbot"></table></div>
 </section>
 
+<!-- CASH -->
+<section class="page" data-p="cash">
+<div class="card c12" style="border-color:var(--mag)"><div class="stat" id="cashstat"></div>
+<div style="margin-top:10px"><button onclick="if(confirm('ARM the real-money account? It only trades when every gate is green.'))ctl('cash_arm')" style="border-color:var(--up)">ARM cash account</button>
+<button onclick="ctl('cash_disarm')" style="border-color:var(--dn)">DISARM + sell cash positions</button></div></div>
+<div class="card c6"><h3>Gates · every one must be green before a real order</h3><div id="cashgates"></div></div>
+<div class="card c6"><h3>How to connect (owner only, in Render → Environment)</h3><div class="list">
+<div>1. On OKX: API → create key with <b>Trade</b> permission only. <b class=dn>Never tick Withdraw.</b> Bind it to Render's IPs or leave unbound.</div>
+<div>2. Add <code>OKX_API_KEY</code>, <code>OKX_API_SECRET</code>, <code>OKX_API_PASSPHRASE</code>.</div>
+<div>3. Start with <code>OKX_DEMO=1</code> (OKX demo money, demo key). Switch to <code>0</code> only after it profits in demo.</div>
+<div>4. <code>CASH_TRADING=1</code> is the master switch. Limits: <code>CASH_PER_TRADE_USD</code> (20), <code>CASH_MAX_OPEN</code> (3), <code>CASH_DAILY_LOSS_USD</code> (30), <code>CASH_TOTAL_LOSS_USD</code> (100).</div>
+<div>5. Press ARM here. Spot only: the cash account copies LONG paper trades; shorts stay on paper.</div></div></div>
+<div class="card c6"><h3>Open cash positions</h3><table id="cashopen"></table></div>
+<div class="card c6"><h3>Closed cash trades</h3><table id="cashclosed"></table></div>
+<div class="card c12"><h3>Cash account log</h3><div class="list" id="cashlog"></div></div>
+</section>
+
 <!-- ACCOUNTS -->
 <section class="page" data-p="accounts">
 <div class="card c6"><h3>Broker mirrors (demo accounts only)</h3><table id="brk"></table></div>
@@ -323,6 +340,7 @@ const PAGES=[
 ['poly','POLYMARKET','Paper bets on prediction markets, plus live odds from Polymarket, Kalshi and Manifold. Paper only (Polymarket is blocked in Australia).',['macro','pipe']],
 ['engines','8 ENGINES','The whole machine as eight steps: scan, analyse, research, flow, decide, risk, execute, learn, each with its live numbers.',['scout','analyst','quant','copy','predictor','macro','pipe','council','desk','improver']],
 ['academy','ACADEMY & SELF-DEV','Before trading, agents train on real history and sit an exam on data nobody trained on. Then it upgrades itself at three speeds. FIRST 12 HOURS: a full review every 15 minutes to learn fast. EVERY MINUTE: headlines graded 15 min later, drifting price sources dropped, each team\'s voting power nudged ±15% by how its open calls are going. EVERY HOUR: improvers re-weight, retire and clone agents; the council gate re-calibrates; and every headline is checked an hour later against the price, so each news publisher earns (or loses) trust. Reports below.',['improver','quant','analyst','desk']],
+['cash','CASH ACCOUNT','Real money on OKX, running next to the paper TRAINING account. When a paper trade opens and every gate is green, a small real order is placed on your own OKX account (demo money first). Hard limits per trade, per day and in total; the kill switch sells everything.',['council','desk','pipe']],
 ['accounts','ACCOUNTS','Demo broker mirrors (off unless you switch them on) and the copy-trading targets, scored for skill versus luck.',['copy','desk','macro']],
 ['manager','MANAGER','Talk to the General Manager by voice or text, get the daily briefing, and use the owner controls.',['improver','council']],
 ['help','HELP','What everything means.',[]]];
@@ -405,9 +423,10 @@ $('ddk').textContent=f(s.drawdown*100,1)+'%';$('tr').textContent=s.totals.trades
 $('cy').textContent=s.cycle;const fz=s.fast||{};$('dpm').textContent=fz.decisions_min!=null?fz.decisions_min:'-';$('mode').textContent=s.phase+' · '+s.mode;
 const l=$('llm');l.textContent=s.llm.on?'Claude ON · '+s.llm.calls+' calls':'Claude OFF (no API key)';l.className='chip '+(s.llm.on?'on':'');
 const hq=(s.council&&s.council.queue.length)||0,hb=$('hbadge');hb.style.display=hq?'inline-block':'none';hb.textContent=hq+' waiting for your YES';
+const cc=s.cash||{},cch=$('cashchip');cch.textContent=cc.live?'CASH ACCOUNT LIVE ('+cc.mode+')':cc.armed?'cash armed · waiting on gates':'PAPER (training) · cash off';cch.className='chip '+(cc.live?'bad':'');
 const r=$('risk');r.textContent=s.halted?'KILL SWITCH: '+s.halt_reason:s.day_blocked?'daily limit reached':s.paused?'PAUSED':'risk manager OK';r.className='chip '+(s.halted||s.day_blocked?'bad':'on')}
 
-function render(){if(!S)return;clusters();pipebar();try{pageChart()}catch(e){console.log(e)}const s=S;try{({charts,blueprint,council,map:sitemap,home,trades,desks,decision,matrix,brain,flow,pipe:renderPipe,crypto,world,news,poly,engines,academy,accounts,manager,help}[cur]||(()=>{}))()}catch(e){console.log(e)}}
+function render(){if(!S)return;clusters();pipebar();try{pageChart()}catch(e){console.log(e)}const s=S;try{({cash,charts,blueprint,council,map:sitemap,home,trades,desks,decision,matrix,brain,flow,pipe:renderPipe,crypto,world,news,poly,engines,academy,accounts,manager,help}[cur]||(()=>{}))()}catch(e){console.log(e)}}
 
 function chart(pts,start){const c=$('ch'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=440;x.clearRect(0,0,c.width,c.height);if(pts.length<2)return;
 const ys=pts.map(p=>p[1]).concat([start]),lo=Math.min(...ys),hi=Math.max(...ys),pad=(hi-lo)*.1||1,W=c.width,H=c.height;
@@ -553,6 +572,12 @@ function fpDraw(){const c=$('fp');if(!c||cur!='charts')return;const x=c.getConte
  $('fpinfo').innerHTML='last '+ks.length+' min on OKX '+CSYM+'-USDT · bought <span class=up>$'+big(tot[0])+'</span> vs sold <span class=dn>$'+big(tot[1])+'</span> · each cell: sold × bought at that price (USD)'}
 setInterval(()=>{if(cur=='charts')fpDraw()},1000);
 
+function cash(){const c=S.cash;if(!c)return;const k=(v,l,cl)=>'<div><b class="big '+(cl||'')+'">'+v+'</b><span>'+l+'</span></div>';
+ $('cashstat').innerHTML=k(c.mode,'account')+k(c.live?'TRADING':c.armed?'ARMED, waiting':'OFF',c.live?'real orders on':'status',c.live?'up':c.armed?'pp':'dn')+k(c.balance==null?'-':'$'+f(c.balance),'USDT balance')+k((c.pnl>=0?'+$':'-$')+f(Math.abs(c.pnl)),'cash P/L',cls(c.pnl))+k('$'+f(c.per_trade,0),'per trade')+k(c.open.length+' / '+c.max_open,'open');
+ $('cashgates').innerHTML=c.gates.map(g=>'<div class=rule><span>'+esc(g.check)+'</span><span class="'+(g.ok?'ok':'dn')+'">'+(g.ok?'✓':'✗')+'</span></div>').join('');
+ tbl('cashopen',['coin','quantity','cost'],c.open.map(p=>[p.symbol,f(p.qty,6),'$'+f(p.cost)]));
+ tbl('cashclosed',['coin','cost','back','P/L'],c.closed.map(p=>[p.sym,'$'+f(p.cost),'$'+f(p.proceeds),'<span class='+cls(p.pnl)+'>'+f(p.pnl)+'</span>']));
+ $('cashlog').innerHTML=c.log.map(l=>'<div><span class=mut>'+new Date(l.t*1000).toLocaleString()+'</span> '+esc(l.text)+'</div>').join('')||'<span class=mut>No cash activity yet.</span>'}
 function heat(){const s=S,gs=['scout','predictor','copy','macro','platform','pipe'],m={};(s.feed||[]).forEach(e=>{const g=PRE[e.agent[0]];if(!g)return;const k=e.symbol+'|'+g;m[k]=(m[k]||0)+e.direction*(e.conf||.5)});
  tbl('heat',['market'].concat(gs),s.symbols.map(sym=>['<b>'+sym+'</b>'].concat(gs.map(g=>{const v=m[sym+'|'+g]||0,a=Math.min(.9,Math.abs(v)/2.5);return '<div style="padding:8px 4px;border-radius:4px;background:'+(v>0?'rgba(63,185,80,'+a+')':v<0?'rgba(248,81,73,'+a+')':'#141927')+'">'+(v?(v>0?'+':'')+f(v,1):'·')+'</div>'}))))}
 function matrix(){const s=S;heat();const fa=s.fast||{};$('fastlog').innerHTML='<div class=stat style="margin-bottom:8px"><div><b class="big pp">'+(fa.decisions_min||0)+'</b><span>decisions in the last minute</span></div><div><b class=big>'+(fa.ms==null?'-':fa.ms+' ms')+'</b><span>time to decide</span></div><div><b class=big>'+(fa.actions_min||0)+'</b><span>actions in the last minute</span></div><div><b class=big>'+(fa.trades_hour||0)+'</b><span>trades this hour</span></div></div>'+(fa.actions||[]).map(a=>'<div><span class=mut>'+new Date(a.t*1000).toLocaleTimeString()+'</span> '+esc(a.text)+'</div>').join('')||'<span class=mut>'+(fa.ticks?fa.ticks+' fast checks so far, nothing needed doing yet.':'Starts once the academy is finished and live trading begins.')+'</span>';tbl('matrix',['market','chart price','pipe price','sources','24h','regime','scouts','predictors','pipe','quant score','final','decision','open'],

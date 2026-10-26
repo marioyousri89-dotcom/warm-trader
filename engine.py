@@ -126,8 +126,19 @@ class Engine:
             cfg.cycles_per_day, cfg.cycles_per_hour, cfg.warmup = 24, 1, 0     # 1-hour candles: moves big enough to beat fees
         cfg.t0 = cfg.warmup
         self.b.kv_set("charters", CHARTERS)
-        self.port.hook_open = lambda t: self.mirror and self.exec.on_open(t)
-        self.port.hook_close = lambda t: self.mirror and self.exec.on_close(t)
+        from cashacct import CashAccount
+        self.cash = CashAccount(self)       # real-money OKX account alongside the paper TRAINING account (gated)
+
+        def _open(t):
+            if self.mirror:
+                self.exec.on_open(t)
+            self.cash.on_open(t)
+
+        def _close(t):
+            if self.mirror:
+                self.exec.on_close(t)
+            self.cash.on_close(t)
+        self.port.hook_open, self.port.hook_close = _open, _close
 
     # ---------------------------------------------------------------- tuning (bounded)
     def apply_tunable(self, key, value, who, reason=""):
@@ -156,8 +167,11 @@ class Engine:
             msg = "Resumed: desks may open new trades."
         elif action == "flatten":
             p.flatten(m, m.cycle, "owner flatten")
+            self.cash.flatten("owner flatten")
             p.paused = True
             msg = "All positions closed and trading paused."
+        elif action in ("cash_arm", "cash_disarm"):
+            msg = self.cash.arm(action == "cash_arm")
         elif action.startswith("review_"):
             msg = self.council.set_review(action == "review_on")
         elif action.startswith("yes:") or action.startswith("no:"):
@@ -389,6 +403,7 @@ class Engine:
         if not p.halted and p.drawdown(eq) > cfg.max_drawdown:
             p.halted = True
             p.halt_reason = f"drawdown {p.drawdown(eq):.1%} exceeded {cfg.max_drawdown:.0%}"
+            self.cash.flatten("kill switch")
             p.flatten(self.market, c, "kill switch")
             self.b.add_lesson(c, "risk_manager", f"KILL SWITCH: {p.halt_reason}. All positions closed, trading stopped.")
 
@@ -656,6 +671,7 @@ class Engine:
             "selfdev": self.selfdev.state(),
             "fast": {k: v for k, v in self.fast.items() if not k.startswith("_")},
             "smart_money": self.traders.state() if hasattr(self.traders, "state") else None,
+            "cash": self.cash.state(),
             "symbols": list(m.symbols), "prices": {s: round(m.last(s), 6) for s in m.symbols},
             "agents_total": len(agents), "agents_active": sum(1 for a in agents if a["active"]),
             "equity": round(last_eq, 2), "start": cfg.start_equity, "pnl": round(last_eq - cfg.start_equity, 2),

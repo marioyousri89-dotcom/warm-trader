@@ -4,8 +4,15 @@
 (https://swarm-trader.onrender.com, dashboard needs `?token=DASHBOARD_TOKEN` from Render → Environment).
 Code: this repo. Render redeploys automatically on every push to `main`. Nothing runs on the owner's laptop.
 
+**Two accounts**
+- PAPER account = TRAINING only (the owner's rule). Every agent learns and is scored there.
+- CASH account (`cashacct.py`) = real money on the owner's own OKX account, copying LONG paper trades with small
+  fixed sizes, only when every gate is green (master switch, owner's trade-only key, owner pressed ARM, exam passed,
+  paper profitable over 30+ trades, daily/total cash loss limits). OKX demo money first (`OKX_DEMO=1`).
+
 **Rules you must keep**
-- PAPER MONEY ONLY. No real orders, no wallets, no API keys with withdrawal or trading rights.
+- Never handle, store or request API keys or passwords; the owner sets them in Render. Never enable withdrawals.
+- Never loosen the cash account gates or limits.
 - Polymarket is blocked in Australia: paper bets only.
 - Never weaken the risk manager (`decision.py: Risk`), the kill switch (12% drawdown) or the daily loss limit (3%).
 - Fees are set to OKX's real taker fee (0.10%) in `config.py`; don't lower them to make results look better.
@@ -24,5 +31,5 @@ Code: this repo. Render redeploys automatically on every push to `main`. Nothing
 9. Academy: on every start it trains on ~25 days of real history and sits an exam on unseen data.
 10. `dashboard.py`: 21-page phone dashboard (BLUEPRINT page = live health check of every part).
 
-**Status:** running live on paper. It has not yet passed its exam on real prices, so it must not trade real money.
+**Status:** paper training live; cash account built but stays off until its gates pass (it has not yet passed its exam on real prices).
 **Owner actions only:** add `ANTHROPIC_API_KEY` in Render to turn on Claude features; upgrade Render to Starter for 5× CPU.
