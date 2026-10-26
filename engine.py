@@ -533,6 +533,12 @@ class Engine:
                         acts.append(f"NEWS DESK opened {sym} {'LONG' if side > 0 else 'SHORT'}: {note[:60]}")
                     else:
                         acts.append(f"news idea on {sym} stopped by council/risk")
+        if _t.time() - self.fast.get("sd_t", 0) >= 60:
+            self.fast["sd_t"] = _t.time()
+            try:
+                self.selfdev.minute(live)                          # light self-upgrade every minute
+            except Exception as ex:
+                acts.append(f"minute upgrade failed: {str(ex)[:60]}")
         if _t.time() - self.fast.get("poly_t", 0) >= 60 and hasattr(self.poly, "tick"):
             self.fast["poly_t"] = _t.time()
             self.poly.tick()                                       # Polymarket desk re-checks every minute

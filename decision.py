@@ -24,7 +24,7 @@ class Aggregator:
             a = swarm.agents.get(s["agent"])
             if not a or not a["active"] or (agent_filter and not agent_filter(a)):
                 continue
-            w = a["weight"]
+            w = a["weight"] * getattr(swarm, "pulse", {}).get(a["grp"], 1.0)    # minute-by-minute team pulse
             if s["kind"] in ("scout", "predict"):
                 w *= swarm.vfactor(a["name"], sym) * tag_factor(TAGS.get(a["lens"], "neutral"), regime["label"])
             if w <= 0.05:

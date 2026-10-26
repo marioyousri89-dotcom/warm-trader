@@ -586,8 +586,9 @@ class MarketPipe:
         if c is not None and c[0] is feeds:
             return c[1]
         idx = {}
+        bad = getattr(self, "bad_sources", ())
         for f in feeds:
-            if f["cat"] in ("crypto", "derivatives") and not f["id"].startswith("global"):
+            if f["cat"] in ("crypto", "derivatives") and not f["id"].startswith("global") and f["provider"] not in bad:
                 e = idx.setdefault(f["id"].rsplit(":", 1)[-1], ([], []))
                 e[0 if f["cat"] == "crypto" else 1].append(f)
         self._idx = (feeds, idx)
