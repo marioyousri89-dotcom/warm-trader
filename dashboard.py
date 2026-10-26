@@ -289,7 +289,7 @@ const cls=v=>v>0?'up':v<0?'dn':'mut',side=s=>s>0?'<span class=up>LONG</span>':s<
 const pct=(v,d=2)=>v==null?'-':'<span class='+cls(v)+'>'+(v>0?'+':'')+f(v*100,d)+'%</span>';
 const big=n=>n==null?'-':Math.abs(n)>=1e12?f(n/1e12,2)+'T':Math.abs(n)>=1e9?f(n/1e9,2)+'B':Math.abs(n)>=1e6?f(n/1e6,2)+'M':Math.abs(n)>=1e4?f(n/1e3,1)+'k':f(n,n<1?4:2);
 const px=n=>n==null?'-':n>=1000?Number(n).toLocaleString(undefined,{maximumFractionDigits:0}):n>=1?f(n,2):f(n,6);
-function tbl(el,head,rows){const e=$(el);if(!e)return;e.innerHTML='<tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr>'+(rows.length?rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join(''):'<tr><td class=mut colspan='+head.length+'>nothing yet</td></tr>')}
+function tbl(el,head,rows){const e=$(el);if(!e)return;e.innerHTML='<tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr>'+(rows.length?rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join(''):'<tr><td class=mut colspan='+head.length+'>'+(S&&S.phase!='live'?'fills in once live trading starts (the academy is running now: '+S.phase+')':'nothing yet')+'</td></tr>')}
 const Q=location.search;
 const PAGES=[
 ['map','SITE MAP','Every page of the app, the agent clusters working on each one, and the market pipe that feeds them all. Tap a tile to open it.',['scout','analyst','quant','copy','predictor','macro','pipe','council','desk','improver']],
