@@ -72,6 +72,7 @@ class Engine:
         if live:
             try:
                 self.market = LiveMarket(cfg.symbols)
+                cfg.symbols = tuple(self.market.symbols)          # only the markets that really have prices
                 self.market_note = "live prices from " + self.market.source
             except Exception as e:                      # every exchange refused us: keep running on the simulator
                 live = False
@@ -86,6 +87,10 @@ class Engine:
         self.council = Council(self)        # five seats + one gate + owner hand-off
         from selfdev import SelfDev
         self.selfdev = SelfDev(self)        # teaches itself every live hour
+        self.fast = {"ticks": 0, "last": 0.0, "actions": [], "closed": 0, "opened": 0}
+        self.fast_last = {}
+        if live:
+            self.market.on_wait = self.fast_tick
         self.traders = None if live else SimTraders(self.b, self.market, cfg.seed + 4)
         self.swarm = Swarm(cfg, self.b)
         self.agg, self.risk, self.port = Aggregator(), Risk(cfg), Portfolio(cfg, self.b)
@@ -205,7 +210,7 @@ class Engine:
         """Round 1 TRAINING: the whole system runs, every agent is scored, weights and capital are learned.
         Round 2 EXAM: fresh account, everything frozen, graded on data nobody trained on."""
         if self.live:                                   # replay real history, then go live
-            hist = self.market.history
+            hist = {k: v[-600:] for k, v in self.market.history.items()}   # recent ~25 days: school takes half as long
             n = min(len(v) for v in hist.values())
             start = min(160, n // 4)
             usable = n - start - 5
@@ -451,6 +456,70 @@ class Engine:
             self.last_note = str(out["note"])[:300]
         return res
 
+    # ---------------------------------------------------------------- FAST LANE (every ~60 s between hourly candles)
+    def fast_tick(self):
+        """Live prices from the pipe -> marks, stops and targets checked now (not at the candle close),
+        and the News Desk can react to a burst of headlines within a minute (still through council + risk)."""
+        if self.phase != "live" or not self.pipe:
+            return
+        import time as _t
+        from types import SimpleNamespace
+        t0 = _t.time()
+        m, c, p = self.market, self.market.cycle, self.port
+        live = {}
+        for s in m.symbols:
+            cc = self.pipe.consensus(s)
+            ref = m.candles[s][-1]["c"]
+            if cc and cc["sources"] >= 3 and abs(cc["price"] / ref - 1) < 0.08:
+                live[s] = cc["price"]
+        if not live:
+            return
+        for s, px in live.items():
+            m._last[s] = px
+        acts = []
+        for t in list(p.open.values()):
+            px = live.get(t["symbol"])
+            if px is None:
+                continue
+            if (t["side"] > 0 and px <= t["stop"]) or (t["side"] < 0 and px >= t["stop"]):
+                p.close_trade(t, px, c, "stop (live, fast lane)")
+                acts.append(f"closed {t['symbol']} at stop {px:.4g}")
+                self.fast["closed"] += 1
+            elif (t["side"] > 0 and px >= t["target"]) or (t["side"] < 0 and px <= t["target"]):
+                p.close_trade(t, px, c, "target (live, fast lane)")
+                acts.append(f"closed {t['symbol']} at target {px:.4g}")
+                self.fast["closed"] += 1
+        prices = {s: m.last(s) for s in m.symbols}
+        eq = p.equity(prices)
+        p.last_equity = eq
+        p.peak = max(p.peak, eq)
+        self._risk_state(c, eq)
+        news = [x for x in self.pipe.signals(m.symbols) if x[0] in ("pipe_buzz", "pipe_news") and x[3] >= 0.6]
+        if news and not p.paused and not p.halted:
+            desk = next((a["name"] for a in self.desks.desks() if a["params"].get("style") == "news"), None)
+            if desk:
+                by = {s: [] for s in m.symbols}
+                for sg in self.b.signals_at(c, ("scout", "predict", "copy", "macro", "platform")):
+                    by.setdefault(sg["symbol"], []).append(sg)
+                ctx = SimpleNamespace(cycle=c, market=m, prices=prices, eq=eq, by=by)
+                for src, sym, side, strength, note in news:
+                    if self.fast_last.get(sym) == c:          # one fast reaction per coin per hour
+                        continue
+                    self.fast_last[sym] = c
+                    it = {"sym": sym, "side": side, "conf": strength, "reason": f"NEWS FAST LANE: {note}",
+                          "hold": 3, "stop": 1.5, "target": 2.5, "sources": [src]}
+                    if self.desks.open_intent(desk, it, ctx):
+                        self.fast["opened"] += 1
+                        acts.append(f"NEWS DESK opened {sym} {'LONG' if side > 0 else 'SHORT'}: {note[:60]}")
+                    else:
+                        acts.append(f"news idea on {sym} stopped by council/risk")
+        self.b.flush()
+        self.fast["ticks"] += 1
+        self.fast["ms"] = int((_t.time() - t0) * 1000)
+        self.fast["last"] = _t.time()
+        for a in acts:
+            self.fast["actions"] = ([{"t": _t.time(), "text": a}] + self.fast["actions"])[:30]
+
     # ---------------------------------------------------------------- the General Manager (chat + voice)
     def org_chart(self):
         out = []
@@ -530,6 +599,7 @@ class Engine:
             "pipe": self.pipe.summary() if self.pipe else None,
             "council": self.council.state(),
             "selfdev": self.selfdev.state(),
+            "fast": self.fast,
             "symbols": list(m.symbols), "prices": {s: round(m.last(s), 6) for s in m.symbols},
             "agents_total": len(agents), "agents_active": sum(1 for a in agents if a["active"]),
             "equity": round(last_eq, 2), "start": cfg.start_equity, "pnl": round(last_eq - cfg.start_equity, 2),

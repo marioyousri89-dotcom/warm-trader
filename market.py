@@ -15,7 +15,7 @@ from sessions import SIM_VOL, session_at
 from collections import deque
 
 REG = {"up": (0.0015, 0.006), "down": (-0.0015, 0.006), "range": (0.0, 0.004), "volatile": (0.0, 0.015)}
-START = {"BTC": 60000.0, "ETH": 3000.0, "SOL": 150.0, "XRP": 2.0, "BNB": 600.0, "DOGE": 0.15, "ADA": 0.6, "LINK": 15.0}
+START = {"BTC": 60000.0, "ETH": 3000.0, "SOL": 150.0, "XRP": 2.0, "BNB": 600.0, "DOGE": 0.15, "ADA": 0.6, "LINK": 15.0, "PAXG": 2600.0, "SPYX": 600.0, "QQQX": 520.0, "NVDAX": 180.0, "TSLAX": 300.0}
 H = 3
 
 
@@ -148,13 +148,32 @@ class LiveMarket:
         self._last_open_time = {s: 0 for s in self.symbols}
         self.src = {}
         self.errors = {}
+        ok = []
         for s in self.symbols:
-            for k in self._klines(s, 1000)[:-1]:
+            try:
+                rows = self._klines(s, 1000)[:-1]
+            except Exception as e:
+                print(f"[live] {s}: no exchange has it ({str(e)[:60]}), skipping this market")
+                continue
+            if len(rows) < 300:
+                print(f"[live] {s}: only {len(rows)} candles of history, skipping this market")
+                continue
+            for k in rows:
                 self._add(s, k)
             self._last[s] = self.candles[s][-1]["c"]
+            ok.append(s)
+        if not ok:
+            raise RuntimeError("no market had live prices")
+        n = min(len(self.candles[s]) for s in ok)          # line every market up on the same hours
+        for s in ok:
+            self.candles[s] = self.candles[s][-n:]
+        self.symbols = ok
+        self.candles = {s: self.candles[s] for s in ok}
         self.history = {s: list(v) for s, v in self.candles.items()}   # real history the academy replays
         self.cycle = min(len(v) for v in self.candles.values())        # live cycles continue after the history
         self.source = ", ".join(sorted(set(self.src.values())))
+        self.on_wait = None          # engine's FAST LANE, called every ~60 s between candles
+        self._last_wait = 0.0
 
     def _okxbar(self):
         return {60: "1H", 120: "2H", 240: "4H"}.get(self.bar, f"{self.bar}m")
@@ -253,7 +272,18 @@ class LiveMarket:
                     fresh += 1
             if fresh:
                 break
-            time.sleep(30)
+            for _ in range(30):                   # new-candle check every 30 s; FAST LANE reacts within ~1 s of news/prices
+                ev = getattr(self, "event", None)
+                hot = ev is not None and ev.is_set()
+                if self.on_wait and ((hot and time.time() - self._last_wait >= 1) or time.time() - self._last_wait >= 60):
+                    if ev is not None:
+                        ev.clear()
+                    self._last_wait = time.time()
+                    try:
+                        self.on_wait()
+                    except Exception as e:
+                        print("[fast lane] error:", str(e)[:120])
+                time.sleep(1)
         for s in self.symbols:
             self._last[s] = self.candles[s][-1]["c"]
         self.cycle += 1

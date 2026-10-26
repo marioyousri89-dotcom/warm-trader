@@ -29,7 +29,7 @@ def main():
     args = ap.parse_args()
 
     cfg = Config(seed=args.seed, db_path=args.db, keep_brain=args.keep, use_llm=not args.no_llm)
-    syms = os.environ.get("SYMBOLS") or ("BTC,ETH,SOL,XRP,BNB,DOGE,ADA,LINK" if args.live else "")
+    syms = os.environ.get("SYMBOLS") or ("BTC,ETH,SOL,XRP,BNB,DOGE,ADA,PAXG,SPYX,QQQX,NVDAX,TSLAX" if args.live else "")
     if syms:
         cfg.symbols = tuple(s.strip().upper() for s in syms.split(",") if s.strip())
     eng = Engine(cfg, live=args.live)
@@ -57,6 +57,7 @@ def main():
     if os.environ.get("MARKET_PIPE", "1") != "0":
         from pipe import MarketPipe
         eng.pipe = MarketPipe()
+        eng.market.event = eng.pipe.event          # news/prices wake the fast lane within ~1 s
         print(f"[pipe] market pipe started: {len(eng.pipe.providers)} providers, {len(eng.pipe.declared)} feeds requested")
 
         def _pipe_log():

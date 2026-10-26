@@ -25,10 +25,11 @@ COINS = ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "ADA", "TRX", "AVAX", "LINK"
          "BCH", "NEAR", "UNI", "APT", "ICP", "ETC", "FIL", "ATOM", "XLM", "HBAR", "ARB", "OP", "INJ", "SUI",
          "SEI", "PEPE", "AAVE", "MKR", "RENDER", "IMX", "GRT", "ALGO", "SAND", "MANA", "AXS", "STX", "TIA",
          "WLD", "JUP", "ONDO", "ENA", "LDO", "CRV", "SNX", "COMP", "EGLD", "XTZ", "EOS", "KAS", "FET", "THETA",
-         "VET", "QNT", "FLOW", "CHZ", "BONK"]
+         "VET", "QNT", "FLOW", "CHZ", "BONK", "PAXG", "SPYX", "QQQX", "NVDAX", "TSLAX"]
 COINSET = set(COINS)
 NAMES = {"BTC": "bitcoin", "ETH": "ethereum|ether", "SOL": "solana", "XRP": "xrp|ripple", "BNB": "bnb|binance coin",
-         "DOGE": "dogecoin", "ADA": "cardano"}
+         "DOGE": "dogecoin", "ADA": "cardano", "LINK": "chainlink", "PAXG": "gold|paxg|bullion", "SPYX": "S&P 500|S&P|Wall Street|stocks",
+         "QQQX": "nasdaq|tech stocks", "NVDAX": "nvidia", "TSLAX": "tesla"}
 ALIAS = {"XBT": "BTC", "XDG": "DOGE", "RNDR": "RENDER"}
 USD_QUOTES = ("USDT", "USDC", "USD", "FDUSD")
 
@@ -267,6 +268,7 @@ DERIV = [
 class MarketPipe:
     def __init__(self, start=True):
         self.lock = threading.Lock()
+        self.event = threading.Event()      # set the moment new headlines or prices land: the engine reacts within ~1 s
         self.feeds = {}          # id -> {cat, provider, label, value, chg, extra, ts}
         self.providers = {}      # name -> {cat, ok, err, last, ms, n, every, due}
         self.headlines = []      # {t, src, title, s}
@@ -370,6 +372,8 @@ class MarketPipe:
                 best[c] = (rk, pair, px, chg, vol)
         for c, (_, pair, px, chg, vol) in best.items():
             self._put(f"{name}:{c}", "crypto", name, f"{c} on {name} ({pair})", px, chg, {"vol": vol})
+        if best:
+            self.event.set()
         return len(best)
 
     def _deriv(self, name, url, fn):
@@ -453,6 +457,8 @@ class MarketPipe:
                     seen.add(k)
                     add.append({"t": now, "src": pub, "title": t, "s": self.tone(t), "via": feed_id})
             self.headlines = (add + self.headlines)[:2500]
+            if add:
+                self.event.set()
             if len(seen) > 20000:
                 self._seen = set(h["title"].lower() for h in self.headlines)
         moods = [self.tone(t) for t, _ in items]
@@ -596,8 +602,11 @@ class MarketPipe:
         fng = next((f for f in feeds if f["id"] == "feargreed:index"), None)
         top = [c for c in (self.consensus(k, feeds) for k in COINS[:8]) if c]
         ok = [p for p in provs if p["ok"]]
+        with self.lock:
+            latest = [{"t": h["t"], "src": h["src"], "title": h["title"][:120], "s": h["s"]} for h in self.headlines[:15]]
+        last_fetch = max((p["last"] for p in provs if p["ok"]), default=0)
         return {"declared": len(self.declared), "live": len(feeds), "by_cat": by,
-                "publishers": len(self.publishers),
+                "publishers": len(self.publishers), "latest": latest, "last_fetch": last_fetch,
                 "sources": len([p for p in ok if not p["name"].startswith("gnews:")]) + len(self.publishers),
                 "news_per_hour": self.news_mood(hours=1)["n"],
                 "providers_ok": sum(1 for p in provs if p["ok"]), "providers": len(provs),

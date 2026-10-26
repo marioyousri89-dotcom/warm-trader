@@ -32,13 +32,21 @@ PREDICTOR_SPECS = [
     ("trendstr", {"fast": 8, "slow": 24}), ("trendstr", {"fast": 12, "slow": 36}),
     ("ensemble", {}), ("zrev", {"n": 20}),
 ]
-ANALYST_SPECS = [
-    ("trend_er", {"n": 20}), ("trend_er", {"n": 50}), ("trend_er", {"n": 100}),
-    ("vol_ratio", {"n": 10}), ("vol_ratio", {"n": 20}), ("vol_ratio", {"n": 40}),
-    ("range_bb", {"n": 20}), ("range_bb", {"n": 40}),
-    ("drawdown", {"n": 100}), ("volume", {"n": 50}), ("skew", {"n": 100}),
-    ("breadth", {"n": 10}), ("breadth", {"n": 30}), ("corr", {"n": 30}), ("corr", {"n": 60}),
-]
+ANALYST_SPECS = (    # the chart-reading department: every lens, over many time windows (60 analysts)
+    [("trend_er", {"n": n}) for n in (10, 14, 20, 30, 50, 75, 100, 150, 200)]
+    + [("vol_ratio", {"n": n}) for n in (5, 10, 15, 20, 30, 40)]
+    + [("range_bb", {"n": n}) for n in (10, 14, 20, 30, 40, 60)]
+    + [("drawdown", {"n": n}) for n in (24, 48, 100, 168, 240)]
+    + [("volume", {"n": n}) for n in (24, 50, 100)]
+    + [("skew", {"n": n}) for n in (50, 100, 200)]
+    + [("breadth", {"n": n}) for n in (5, 10, 20, 30, 60)]
+    + [("corr", {"n": n}) for n in (20, 30, 60, 120)]
+    + [("ma_slope", {"n": n}) for n in (10, 20, 50, 100, 200)]
+    + [("hilo", {"n": n}) for n in (14, 24, 50, 100, 200)]
+    + [("atr_trend", {"n": n}) for n in (14, 24, 50)]
+    + [("trend_er", {"n": 300}), ("drawdown", {"n": 360}), ("volume", {"n": 200}), ("skew", {"n": 300}),
+       ("hilo", {"n": 300}), ("ma_slope", {"n": 300})]
+)
 QUANT_ROSTER = [(m, {"w": w}) for m, w in QUANT_SPECS]
 COPY_SPECS = [
     ("wilson", {"k": 1, "min_n": 8}), ("wilson", {"k": 2, "min_n": 8}), ("wilson", {"k": 3, "min_n": 12}),
@@ -72,6 +80,7 @@ DESK_SPECS = [
     ("copydesk", {"style": "copy_desk", "hold": 3, "stop": 1.5, "target": 2.0}),
     ("fader", {"style": "fade", "thr": 0.5, "need": 1, "hold": 3, "stop": 1.5, "target": 2.0}),
     ("sprinter", {"style": "sprinter", "thr": 0.75, "need_d": -1, "hold": 4, "stop": 1.0, "target": 1.5}),
+    ("newsdesk", {"style": "news", "thr": 0.7, "need": 1, "hold": 3, "stop": 1.5, "target": 2.5}),   # + fast lane
 ]
 
 GROUPS = [("scout", "S", SCOUT_SPECS), ("analyst", "A", ANALYST_SPECS), ("quant", "Q", QUANT_ROSTER),
@@ -281,6 +290,20 @@ class Swarm:
             recent = mean([x["v"] for x in c[-5:]])
             base = mean([x["v"] for x in c[-n - 5:-5]])
             return "volatile" if base and recent > 2 * base else None
+        if lens == "ma_slope" and len(c) > n + 6:
+            now_ma = mean([x["c"] for x in c[-n:]])
+            then_ma = mean([x["c"] for x in c[-n - 5:-5]])
+            ch = now_ma / then_ma - 1 if then_ma else 0
+            band = (atr(c) or 0) / (c[-1]["c"] or 1) * 0.5
+            return "up" if ch > band else "down" if ch < -band else "range"
+        if lens == "hilo" and len(c) > n:
+            hi, lo = max(x["h"] for x in c[-n:]), min(x["l"] for x in c[-n:])
+            pos = (c[-1]["c"] - lo) / (hi - lo) if hi > lo else 0.5
+            return "up" if pos > 0.85 else "down" if pos < 0.15 else None
+        if lens == "atr_trend" and len(c) > n * 3:
+            a_now = mean([x["h"] - x["l"] for x in c[-n:]])
+            a_then = mean([x["h"] - x["l"] for x in c[-n * 3:-n]])
+            return "volatile" if a_then and a_now > 1.5 * a_then else None
         if lens == "skew" and len(c) > n + 2:
             r = rets(cl(c[-(n + 1):]))
             sd = std(r)

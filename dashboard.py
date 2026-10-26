@@ -22,6 +22,10 @@ nav a.on{color:var(--tx);border-color:var(--ac);background:#1f2a3a}
 .chip.on{color:var(--up);border-color:var(--up)}.chip.bad{color:var(--dn);border-color:var(--dn)}
 .pipebar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer;background:#120f1d}
 .pipebar b{color:var(--pipe)}
+.tape{overflow:hidden;white-space:nowrap;border-bottom:1px solid var(--line);background:rgba(0,0,0,.35);font:12px ui-monospace,Menlo,monospace;padding:5px 0;position:relative;z-index:1;cursor:pointer}
+.tapein{display:inline-block;padding-left:100%;animation:tape 90s linear infinite}.tapein span{margin-right:34px}
+@keyframes tape{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--up);box-shadow:0 0 8px var(--up);animation:blink 1.2s infinite;margin-right:4px}@keyframes blink{50%{opacity:.25}}
 .desc{padding:12px 16px 0;color:var(--mut);max-width:1100px}.desc h2{color:var(--tx);font-size:18px;margin:0 0 4px}
 .clusters{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;padding:10px 16px}
 .cl{border:1px solid var(--line);border-left:3px solid var(--ac);border-radius:8px;padding:7px 9px;background:var(--card)}
@@ -90,6 +94,7 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <span id="llm" class="chip">Claude</span><span id="risk" class="chip">risk</span><span class="chip">PAPER ONLY</span><a id="hbadge" class="chip" href="#council" style="display:none;border-color:var(--mag);color:var(--mag);text-decoration:none"></a></header>
 <nav id="nav"></nav>
 <div class="pipebar" id="pipebar" onclick="go('pipe')"><b>MARKET PIPE</b><span class="mut">starting...</span></div>
+<div class="tape" onclick="go('news')"><div class="tapein" id="tape"></div></div>
 <div class="desc" id="desc"></div>
 <div class="clusters" id="clusters"></div>
 <main>
@@ -145,6 +150,7 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <div class="card c12"><h3>Matrix: one row per traded market, every input side by side</h3><table id="matrix"></table>
 <p class="mut" style="margin:8px 0 0">Chart price = what the robot trades on. Pipe price = median of every exchange in the pipe. Votes = signals posted in the last 30 entries of the brain.</p></div>
 <div class="card c12"><h3>Signal heatmap · market × team (green = buy pressure, red = sell)</h3><table class="heat" id="heat"></table></div>
+<div class="card c12"><h3>Fast lane · reacts within ~1 s of new news or prices (live stops/targets + News Desk)</h3><div class="list" id="fastlog"></div></div>
 <div class="card c12"><h3>Pipe agents: their latest votes</h3><div class="list" id="pipevotes"></div></div>
 </section>
 
@@ -317,7 +323,10 @@ function drawCL(){requestAnimationFrame(drawCL);const c=$('clc');if(!c||!CL||doc
   x.font='600 '+(11*DPR)+'px ui-monospace,Menlo,monospace';x.fillStyle='#fff';x.fillText(k.g.toUpperCase(),k.x+12*DPR,k.y-6*DPR);
   x.font=(10*DPR)+'px ui-monospace,Menlo,monospace';x.fillStyle='#9aa4bf';x.fillText((k.G.active||0)+' agents · '+(k.G.avg_acc==null?'learning':'hit '+(k.G.avg_acc*100).toFixed(0)+'%'),k.x+12*DPR,k.y+8*DPR)})}
 requestAnimationFrame(drawCL);window.addEventListener('resize',()=>{clBuilt=0});
-function pipebar(){const p=S&&S.pipe;if(!p){$('pipebar').innerHTML='<b>MARKET PIPE</b><span class=mut>off</span>';return}
+function pipebar(){const p=S&&S.pipe;if(!p){const ago=p.last_fetch?Math.max(0,Math.round(Date.now()/1000-p.last_fetch)):null,fa=S.fast||{},fago=fa.last?Math.round(Date.now()/1000-fa.last):null;
+const tp=(p.latest||[]).map(h=>'<span><span class=mut>'+new Date(h.t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+' '+esc(h.src)+':</span> <span class='+cls(h.s)+'>'+esc(h.title)+'</span></span>').join('')+(p.top||[]).map(c=>'<span>'+c.coin+' $'+px(c.price)+' '+pct(c.chg24,1)+'</span>').join('');
+if(tp&&$('tape').dataset.k!==String((p.latest||[{}])[0].t)){$('tape').innerHTML=tp;$('tape').dataset.k=String((p.latest||[{}])[0].t)}
+$('pipebar').innerHTML='<span class=live></span><b>MARKET PIPE</b><span class=mut>updated '+(ago==null?'-':ago+'s ago')+' · fast lane '+(fago==null?'waiting':fago+'s ago'+(fa.ms!=null?' ('+fa.ms+' ms to decide)':''))+(fa.closed||fa.opened?' · '+fa.opened+' fast entries, '+fa.closed+' fast exits':'')+'</span><span class=mut>off</span>';return}
 const t=p.top.slice(0,4).map(c=>'<span>'+c.coin+' <b style="color:var(--tx)">$'+px(c.price)+'</b> <span class=mut>('+c.sources+' src)</span> '+pct(c.chg24,1)+'</span>').join('');
 $('pipebar').innerHTML='<b>MARKET PIPE</b><span><b>'+(p.sources||0)+'</b> sources answering</span><span><b>'+p.live+'</b> live feeds</span><span>'+p.providers_ok+'/'+p.providers+' platforms OK · '+(p.publishers||0)+' news publishers</span><span><b>'+(p.news_per_hour||0)+'</b> stories/hour</span>'+t+
 (p.fng?'<span>Fear&amp;Greed <b style="color:var(--tx)">'+f(p.fng.value,0)+'</b></span>':'')+'<span>news mood <span class='+cls(p.news.mood)+'>'+f(p.news.mood,2)+'</span> <span class=mut>('+p.news.n+')</span></span>'+
@@ -392,11 +401,11 @@ function council(){const c=S.council;if(!c)return;const last=c.log[0]||{seats:{}
  tbl('clog',['#','desk','market','side','council'].concat(SEATS.map(s=>s[1])).concat(['verdict']),c.log.map(e=>[e.cycle,esc(e.desk),e.symbol,sideTxt(e.side),'<b>'+f(e.score,2)+'</b>'].concat(seatCells(e.seats)).concat(['<span class="'+(/AUTO|YES/.test(e.verdict)?'up':/VETO|NO|REJECT/.test(e.verdict)?'dn':'pp')+'">'+esc(e.verdict)+'</span>'])))}
 function heat(){const s=S,gs=['scout','predictor','copy','macro','platform','pipe'],m={};(s.feed||[]).forEach(e=>{const g=PRE[e.agent[0]];if(!g)return;const k=e.symbol+'|'+g;m[k]=(m[k]||0)+e.direction*(e.conf||.5)});
  tbl('heat',['market'].concat(gs),s.symbols.map(sym=>['<b>'+sym+'</b>'].concat(gs.map(g=>{const v=m[sym+'|'+g]||0,a=Math.min(.9,Math.abs(v)/2.5);return '<div style="padding:8px 4px;border-radius:4px;background:'+(v>0?'rgba(63,185,80,'+a+')':v<0?'rgba(248,81,73,'+a+')':'#141927')+'">'+(v?(v>0?'+':'')+f(v,1):'·')+'</div>'}))))}
-function matrix(){const s=S;heat();tbl('matrix',['market','chart price','pipe price','sources','24h','regime','scouts','predictors','pipe','quant score','final','decision','open'],
+function matrix(){const s=S;heat();const fa=s.fast||{};$('fastlog').innerHTML=(fa.actions||[]).map(a=>'<div><span class=mut>'+new Date(a.t*1000).toLocaleTimeString()+'</span> '+esc(a.text)+'</div>').join('')||'<span class=mut>'+(fa.ticks?fa.ticks+' fast checks so far, nothing needed doing yet.':'Starts once the academy is finished and live trading begins.')+'</span>';tbl('matrix',['market','chart price','pipe price','sources','24h','regime','scouts','predictors','pipe','quant score','final','decision','open'],
 s.symbols.map(sym=>{const c=coinOf(sym)||{},v=votes(sym),d=(s.decisions||[]).find(x=>x.symbol==sym)||{},r=s.regimes[sym]||{},o=s.open_trades.filter(t=>t.symbol==sym).length;
 const vv=n=>n==null?'<span class=mut>0</span>':'<span class='+cls(n)+'>'+(n>0?'+':'')+n+'</span>';
 return['<b>'+sym+'</b>',px(s.prices[sym]),px(c.price),c.sources||'-',pct(c.chg24),esc(r.label||'-')+(r.vol_high?' ⚡':''),vv(v.scout),vv(v.predict),vv(v.platform),f(d.quant),f(d.final),'<span class=mut>'+esc(d.result||'-')+'</span>',o]}));
-$('pipevotes').innerHTML=(s.feed||[]).filter(e=>e.agent.startsWith('Y.')).map(e=>'<div><span class=mut>#'+e.cycle+'</span> <span class=pp>'+esc(e.agent)+'</span> → <b>'+e.symbol+'</b> '+side(e.direction)+' <span class=mut>('+e.conf+')</span></div>').join('')||'<span class=mut>Pipe agents vote on every live 1-hour candle once the academy is done, and only on real prices.</span>'}
+$('pipevotes').innerHTML=(s.feed||[]).filter(e=>e.agent.startsWith('Y.')).map(e=>'<div><span class=mut>#'+e.cycle+'</span> <span class=pp>'+esc(e.agent)+'</span> → <b>'+e.symbol+'</b> '+side(e.direction)+' <span class=mut>('+e.conf+')</span></div>').join('')||'<span class=mut>Pipe agents vote on every live 1-hour candle; the fast lane reacts to news within ~1 s, and only on real prices.</span>'}
 function feedHTML(s){return s.feed.map(e=>'<div><span class=mut>#'+e.cycle+'</span> '+esc(e.agent)+' → <b>'+e.symbol+'</b> '+side(e.direction)+' <span class=mut>('+e.conf+', '+e.kind+')</span></div>').join('')||'<span class=mut>No signals yet.</span>'}
 function brain(){const s=S;$('groups2').innerHTML=groupsHTML(s);const ar=a=>[esc(a.name),a.grp,f(a.acc*100,1)+'%',a.n,f(a.weight)];
 tbl('top',['agent','team','hit','calls','weight'],s.top_agents.map(ar));tbl('bot',['agent','team','hit','calls','weight'],s.bottom_agents.map(ar));

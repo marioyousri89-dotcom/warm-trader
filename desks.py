@@ -105,6 +105,7 @@ class DeskManager:
                 "fade": ({"copy"}, lambda ag: ag["lens"] == "fade", None),
                 "macro": ({"macro"}, None, None),
                 "platform": ({"platform"}, None, None),
+                "news": ({"platform"}, None, None),
             }[st]
             need = p.get("need") or max(2, cfg.min_agents + p.get("need_d", 0))
             thr = cfg.agg_threshold * p.get("thr", 1.0)
@@ -112,7 +113,7 @@ class DeskManager:
                 reg = cd["regime"]
                 if (need_regime == "trend" and reg not in ("up", "down")) or (need_regime == "range" and reg != "range"):
                     continue
-                score = ctx.adjust(cd["symbol"], cd["score"], veto_only=st in COPY_STYLES + ("macro", "platform"))
+                score = ctx.adjust(cd["symbol"], cd["score"], veto_only=st in COPY_STYLES + ("macro", "platform", "news"))
                 d = sign(score)
                 if not d or abs(score) < thr or d != cd["dir"] or cd["agree"] < need:
                     continue
@@ -125,45 +126,46 @@ class DeskManager:
         return sorted(out, key=lambda o: -o["conf"])[:2]
 
     # ------------------------------------------------------------------ act
-    def run(self, ctx):
+    def open_intent(self, name, it, ctx, via_owner=False):
+        """One proposal -> risk manager -> council gate -> paper fill. Returns True if a trade opened."""
         e, n_act = self.e, max(1, len(self.desks()))
         corr_high = e.swarm.global_flags["corr"] > 0.7
         council = getattr(e, "council", None)
+        sym, side, m = it["sym"], it["side"], ctx.market
+        px, at = m.last(sym), atr(m.candles[sym])
+        reg = e.swarm.regimes[sym]
+        mult = min(1.5, max(0.4, self.share(name) * n_act)) * e.session_mult.get(e.port.session, 1.0)
+        size, why, risk = e.risk.approve(name, sym, px, at, it["stop"], it["conf"], reg["vol_high"], corr_high,
+                                         e.port, ctx.eq, ctx.prices, mult)
+        verdict = "go" if size > 0 else "no"
+        if council and not via_owner:
+            verdict, cwhy = council.decide(name, it, ctx, size > 0, why)
+            if verdict != "go":
+                why = cwhy if size > 0 else why
+        if verdict == "go" and size > 0:
+            e.port.open_trade(name, sym, side, size, px, px - side * it["stop"] * at,
+                              px + side * it["target"] * at, ctx.cycle, reg["label"], it["sources"],
+                              side * it["conf"], ("OWNER YES · " if via_owner else "") + it["reason"], it["hold"], risk)
+            why = "OPENED"
+        elif verdict == "handoff":
+            why = "waiting for owner"
+        self.req += 1
+        if why == "OPENED":
+            self.yes += 1
+        else:
+            self.no += 1
+            k = why.split(":")[0] if why.startswith("council") else why
+            self.reasons[k] = self.reasons.get(k, 0) + 1
+        if why not in ("already in position", "desk position limit"):
+            self.log.append({"cycle": ctx.cycle, "desk": name, "symbol": sym, "side": side, "result": why,
+                             "reason": it["reason"][:90]})
+        return why == "OPENED"
 
-        def try_open(name, it, via_owner=False):
-            sym, side, m = it["sym"], it["side"], ctx.market
-            px, at = m.last(sym), atr(m.candles[sym])
-            reg = e.swarm.regimes[sym]
-            mult = min(1.5, max(0.4, self.share(name) * n_act)) * e.session_mult.get(e.port.session, 1.0)
-            size, why, risk = e.risk.approve(name, sym, px, at, it["stop"], it["conf"], reg["vol_high"], corr_high,
-                                             e.port, ctx.eq, ctx.prices, mult)
-            verdict = "go" if size > 0 else "no"
-            if council and not via_owner:
-                verdict, cwhy = council.decide(name, it, ctx, size > 0, why)
-                if verdict != "go":
-                    why = cwhy if size > 0 else why
-            if verdict == "go" and size > 0:
-                e.port.open_trade(name, sym, side, size, px, px - side * it["stop"] * at,
-                                  px + side * it["target"] * at, ctx.cycle, reg["label"], it["sources"],
-                                  side * it["conf"], ("OWNER YES · " if via_owner else "") + it["reason"], it["hold"], risk)
-                why = "OPENED"
-            elif verdict == "handoff":
-                why = "waiting for owner"
-            self.req += 1
-            if why == "OPENED":
-                self.yes += 1
-            else:
-                self.no += 1
-                self.reasons[why.split(":")[0] if why.startswith("council") else why] = \
-                    self.reasons.get(why.split(":")[0] if why.startswith("council") else why, 0) + 1
-            if why not in ("already in position", "desk position limit"):
-                self.log.append({"cycle": ctx.cycle, "desk": name, "symbol": sym, "side": side, "result": why,
-                                 "reason": it["reason"][:90]})
-            return why == "OPENED"
-
+    def run(self, ctx):
+        council = getattr(self.e, "council", None)
         if council:                                   # owner answers from the app are applied here, on fresh prices
             for q in council.pending(ctx.cycle):
-                try_open(q["desk"], q["intent"], via_owner=True)
+                self.open_intent(q["desk"], q["intent"], ctx, via_owner=True)
         for a in self.desks():
             name = a["name"]
             if self.paused_until.get(name, 0) > ctx.cycle:
@@ -172,7 +174,7 @@ class DeskManager:
             for it in self.intents(a, ctx):
                 if opened >= 2:
                     break
-                if try_open(name, it):
+                if self.open_intent(name, it, ctx):
                     opened += 1
 
     # ------------------------------------------------------------------ every simulated/real hour
