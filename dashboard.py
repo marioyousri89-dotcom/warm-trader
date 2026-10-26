@@ -67,6 +67,10 @@ input{background:var(--bg);color:var(--tx);border:1px solid var(--line);border-r
 .hc .t{font:700 11px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px;text-align:center}
 .t.OK{background:rgba(63,185,80,.18);color:var(--up)}.t.WARN{background:rgba(210,153,34,.18);color:var(--warn)}.t.OFF{background:rgba(248,81,73,.15);color:var(--dn)}.t.IDLE{background:#1b2132;color:var(--mut)}
 @media(max-width:600px){.hc{grid-template-columns:56px 1fr}.hc div:last-child{grid-column:1/-1}}
+.pchart{margin:4px 16px 8px;border:1px solid var(--line);border-radius:12px;background:rgba(3,4,9,.9);padding:10px 12px;position:relative;z-index:1}
+.pchart canvas{display:block;width:100%;height:220px}.pct{font:600 11.5px ui-monospace,Menlo,monospace;letter-spacing:.06em;color:#9aa4bf;margin-bottom:6px}
+.symsel button{font:12px ui-monospace,Menlo,monospace;padding:5px 10px}.symsel button.on{border-color:var(--mag);color:#fff}
+#tv{height:460px}#fp{width:100%;height:480px;display:block}
 .page{display:none}.page.on{display:contents}
 .scroll{max-height:520px;overflow:auto}
 @media(max-width:600px){header{padding:10px}main{padding:6px 10px 40px}.clusters{padding:10px}}
@@ -113,12 +117,20 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <div class="tape" onclick="go('news')"><div class="tapein" id="tape"></div></div>
 <div class="desc" id="desc"></div>
 <div class="clusters" id="clusters"></div>
+<div class="pchart" id="pchartwrap"><div class="pct" id="pct"></div><canvas id="pc"></canvas></div>
 <main>
 
 <!-- BLUEPRINT -->
 <section class="page" data-p="blueprint">
 <div class="card c7 c12"><h3>The operation, stage by stage (live numbers)</h3><div id="bpflow"></div></div>
 <div class="card c12"><h3>Health check · every part of the system</h3><div id="bphealth"></div></div>
+</section>
+
+<!-- CHARTS -->
+<section class="page" data-p="charts">
+<div class="card c12"><div class="symsel" id="symsel"></div></div>
+<div class="card c12"><h3>TradingView chart (real exchange candles, all TradingView tools)</h3><div id="tv"></div></div>
+<div class="card c12"><h3>Footprint · live order flow: buy vs sell volume at each price, per minute (green = buyers won the level)</h3><canvas id="fp"></canvas><div class=mut id="fpinfo" style="margin-top:6px;font-size:11.5px"></div></div>
 </section>
 
 <!-- SITE MAP -->
@@ -247,7 +259,8 @@ nav a.on{border-color:var(--mag);color:#fff;background:rgba(255,62,165,.12);box-
 <!-- ACADEMY -->
 <section class="page" data-p="academy">
 <div class="card c12"><h3>Graduation report</h3><div id="grad" class="mut"></div></div>
-<div class="card c12"><h3>Exam by team</h3><table id="gradg"></table></div>
+<div class="card c12" style="border-color:var(--pipe)"><h3>Training status · every department</h3><table id="trainall"></table></div>
+<div class="card c12"><h3>Exam by team (unseen history)</h3><table id="gradg"></table></div>
 <div class="card c12" style="border-color:var(--mag)"><h3>Self-development · a report every live hour</h3><div class="stat" id="sdstat"></div><div class="scroll"><table id="sdlog"></table></div></div>
 <div class="card c6"><h3>News publishers it has learned to TRUST</h3><table id="pubtop"></table></div>
 <div class="card c6"><h3>News publishers it has learned to DOUBT</h3><table id="pubbot"></table></div>
@@ -294,6 +307,7 @@ const Q=location.search;
 const PAGES=[
 ['map','SITE MAP','Every page of the app, the agent clusters working on each one, and the market pipe that feeds them all. Tap a tile to open it.',['scout','analyst','quant','copy','predictor','macro','pipe','council','desk','improver']],
 ['blueprint','BLUEPRINT','The whole operation broken down, live: every stage from data in to trades out, how many are working on it right now, and a health check on every part (OK = working, IDLE = waiting for input, OFF = needs something from you, WARN = working but weak).',['scout','analyst','quant','copy','predictor','macro','pipe','council','desk','improver']],
+['charts','CHARTS','A real TradingView candlestick chart for every market we trade, plus a live FOOTPRINT built from every trade on the exchange: at each price level you see how much was bought versus sold each minute. That is where buyers or sellers are actually winning.',['analyst','quant','pipe','scout']],
 ['home','HOME','Your paper account at a glance: money, the equity curve, what the chief strategist decided, and the teams.',['scout','analyst','quant','copy','predictor','macro','pipe','council','desk','improver']],
 ['trades','TRADES','Every open position and every closed paper trade, with the desk that took it and why.',['desk','council']],
 ['desks','DESKS','Ten trading desks, each with its own style and slice of capital, ranked by profit per hour. Losing desks cool off.',['desk','improver','council']],
@@ -308,7 +322,7 @@ const PAGES=[
 ['news','NEWS','Headlines from ~35 news and central-bank feeds, scored by simple upbeat/downbeat word counts. Headlines are data, never instructions.',['macro','pipe']],
 ['poly','POLYMARKET','Paper bets on prediction markets, plus live odds from Polymarket, Kalshi and Manifold. Paper only (Polymarket is blocked in Australia).',['macro','pipe']],
 ['engines','8 ENGINES','The whole machine as eight steps: scan, analyse, research, flow, decide, risk, execute, learn, each with its live numbers.',['scout','analyst','quant','copy','predictor','macro','pipe','council','desk','improver']],
-['academy','ACADEMY & SELF-DEV','Before trading, agents train on real history and sit an exam on data nobody trained on. Then it upgrades itself at two speeds. EVERY MINUTE: headlines graded 15 min later, drifting price sources dropped, each team\'s voting power nudged ±15% by how its open calls are going. EVERY HOUR: improvers re-weight, retire and clone agents; the council gate re-calibrates; and every headline is checked an hour later against the price, so each news publisher earns (or loses) trust. Reports below.',['improver','quant','analyst','desk']],
+['academy','ACADEMY & SELF-DEV','Before trading, agents train on real history and sit an exam on data nobody trained on. Then it upgrades itself at three speeds. FIRST 12 HOURS: a full review every 15 minutes to learn fast. EVERY MINUTE: headlines graded 15 min later, drifting price sources dropped, each team\'s voting power nudged ±15% by how its open calls are going. EVERY HOUR: improvers re-weight, retire and clone agents; the council gate re-calibrates; and every headline is checked an hour later against the price, so each news publisher earns (or loses) trust. Reports below.',['improver','quant','analyst','desk']],
 ['accounts','ACCOUNTS','Demo broker mirrors (off unless you switch them on) and the copy-trading targets, scored for skill versus luck.',['copy','desk','macro']],
 ['manager','MANAGER','Talk to the General Manager by voice or text, get the daily briefing, and use the owner controls.',['improver','council']],
 ['help','HELP','What everything means.',[]]];
@@ -393,7 +407,7 @@ const l=$('llm');l.textContent=s.llm.on?'Claude ON · '+s.llm.calls+' calls':'Cl
 const hq=(s.council&&s.council.queue.length)||0,hb=$('hbadge');hb.style.display=hq?'inline-block':'none';hb.textContent=hq+' waiting for your YES';
 const r=$('risk');r.textContent=s.halted?'KILL SWITCH: '+s.halt_reason:s.day_blocked?'daily limit reached':s.paused?'PAUSED':'risk manager OK';r.className='chip '+(s.halted||s.day_blocked?'bad':'on')}
 
-function render(){if(!S)return;clusters();pipebar();const s=S;try{({blueprint,council,map:sitemap,home,trades,desks,decision,matrix,brain,flow,pipe:renderPipe,crypto,world,news,poly,engines,academy,accounts,manager,help}[cur]||(()=>{}))()}catch(e){console.log(e)}}
+function render(){if(!S)return;clusters();pipebar();try{pageChart()}catch(e){console.log(e)}const s=S;try{({charts,blueprint,council,map:sitemap,home,trades,desks,decision,matrix,brain,flow,pipe:renderPipe,crypto,world,news,poly,engines,academy,accounts,manager,help}[cur]||(()=>{}))()}catch(e){console.log(e)}}
 
 function chart(pts,start){const c=$('ch'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=440;x.clearRect(0,0,c.width,c.height);if(pts.length<2)return;
 const ys=pts.map(p=>p[1]).concat([start]),lo=Math.min(...ys),hi=Math.max(...ys),pad=(hi-lo)*.1||1,W=c.width,H=c.height;
@@ -482,6 +496,63 @@ function blueprint(){const s=S,p=s.pipe||{},dd=s.decision_desk||{},c=s.council||
  [fa.ms==null?'IDLE':fa.ms<500?'OK':'WARN','Server speed',fa.ms==null?'fast lane starts after the academy':fa.ms+' ms per decision'+(fa.ms>=500?' — the free server is slow; Render Starter ($7/mo) is ~5× faster':'')],
  ['OFF','Real money','paper only by design: no real orders, no wallet, Polymarket blocked in Australia']];
  $('bphealth').innerHTML=H.map(x=>'<div class=hc><span class="t '+x[0]+'">'+x[0]+'</span><b>'+x[1]+'</b><div class=mut>'+x[2]+'</div></div>').join('')}
+// ---------- one chart style for every page: labelled horizontal bars (green = good / up, red = bad / down)
+function bars(title,rows,fmt){$('pct').textContent=title;const c=$('pc'),x=c.getContext('2d'),W=c.width=c.clientWidth*DPR;rows=rows.filter(r=>r&&r[1]!=null&&!isNaN(r[1])).slice(0,14);
+ const rh=Math.max(16,Math.min(26,200/Math.max(1,rows.length)))*DPR,H=c.height=Math.max(120*DPR,rows.length*rh+30*DPR);c.style.height=(H/DPR)+'px';x.clearRect(0,0,W,H);
+ if(!rows.length){x.fillStyle='#8b949e';x.font=(12*DPR)+'px ui-monospace,Menlo';x.fillText(S&&S.phase!='live'?'fills in once live trading starts (academy running)':'no data yet for this chart',10*DPR,40*DPR);return}
+ const mx=Math.max(...rows.map(r=>Math.abs(r[1])))||1,lw=Math.min(W*.38,170*DPR),neg=rows.some(r=>r[1]<0),span=W-lw-80*DPR,zero=neg?lw+span/2:lw;
+ x.strokeStyle='#262d38';x.beginPath();x.moveTo(zero,0);x.lineTo(zero,H);x.stroke();
+ rows.forEach((r,i)=>{const y=10*DPR+i*rh,w=Math.abs(r[1])/mx*(neg?span/2:span),col=r[2]||(r[1]>=0?'#3fb950':'#f85149');
+  x.fillStyle='#c9d1d9';x.font=(11*DPR)+'px ui-monospace,Menlo';x.textAlign='right';x.fillText(String(r[0]).slice(0,22),lw-8*DPR,y+rh*.62);x.textAlign='left';
+  x.fillStyle=col;x.globalAlpha=.85;x.fillRect(r[1]>=0?zero:zero-w,y+rh*.18,Math.max(2,w),rh*.6);x.globalAlpha=1;
+  x.fillStyle='#fff';x.fillText(fmt?fmt(r[1]):f(r[1]),(r[1]>=0?zero+w:zero)+6*DPR,y+rh*.62)})}
+function pageChart(){const s=S,P_=P||{},hide=['help','manager','map','charts'].includes(cur);$('pchartwrap').style.display=hide?'none':'block';if(hide)return;
+ const pc=v=>(v>=0?'+':'')+f(v*100,2)+'%',usd=v=>(v>=0?'+$':'-$')+f(Math.abs(v)),G=s.groups||[],pb=s.polybook||{},dd=s.decision_desk||{};
+ const C={
+ blueprint:()=>bars('ACTIVE MEMBERS PER DEPARTMENT',DEPTS.map(d=>[d.name,deptInfo(d).act,d.c]),v=>f(v,0)),
+ home:()=>bars('PROFIT PER HOUR, LAST HOURS (paper $)',(s.hours||[]).slice(-14).map(h=>['hour '+h.hour,h.pnl]),usd),
+ trades:()=>bars('P/L OF THE LAST CLOSED TRADES ($)',(s.closed_trades||[]).map(t=>['#'+t.id+' '+t.symbol+' '+String(t.desk||'').replace(/^T\d+\./,''),t.pnl]),usd),
+ desks:()=>bars('PROFIT PER HOUR BY DESK, LAST 24H ($)',(s.desks||[]).map(d=>[String(d.desk).replace(/^T\d+\./,''),d.pph]),usd),
+ decision:()=>bars('APPROVED vs WHY PROPOSALS WERE STOPPED (count)',[['APPROVED',dd.approved||0,'#3fb950']].concat((dd.reasons||[]).map(r=>[r[0],-r[1]])),v=>f(Math.abs(v),0)),
+ council:()=>{const l=((s.council||{}).log||[])[0];bars('LAST IDEA: EACH SEAT’S SCORE (centre = 0.5 neutral)',l?SEATS.map(([k,n])=>[n,((l.seats[k]||{}).v||0)-.5]):[],v=>f(v+.5,2))},
+ matrix:()=>bars('NET VOTE PER MARKET (signals in the brain)',s.symbols.map(sym=>[sym,(s.feed||[]).filter(e=>e.symbol==sym).reduce((a,e)=>a+e.direction*(e.conf||.5),0)]),v=>f(v,1)),
+ brain:()=>bars('HIT RATE BY TEAM vs 50% COIN FLIP',G.filter(g=>g.avg_acc!=null).map(g=>[g.group,g.avg_acc-.5,GC[g.group]]),v=>f((v+.5)*100,1)+'%'),
+ flow:()=>bars('BUY minus SELL VOTES PER MARKET',s.symbols.map(sym=>{const fs=(s.feed||[]).filter(e=>e.symbol==sym);return[sym,fs.filter(e=>e.direction>0).length-fs.filter(e=>e.direction<0).length]}),v=>f(v,0)),
+ pipe:()=>bars('ITEMS PER MINUTE THROUGH EACH PIPELINE',((s.pipe||{}).lanes||[]).map(l=>[l.lane,l.items_min,'#ff3ea5']),v=>f(v,0)),
+ crypto:()=>bars('24H MOVE, TOP COINS (median of all exchanges)',(P_.coins||[]).slice(0,14).map(c=>[c.coin,c.chg24]),pc),
+ world:()=>bars('TODAY’S MOVE, WORLD MARKETS',(P_.world||[]).filter(w=>w.chg!=null&&['index','commodity'].includes(w.extra.kind)).sort((a,b)=>b.chg-a.chg).slice(0,14).map(w=>[w.label,w.chg]),pc),
+ news:()=>bars('NEWS MOOD BY MARKET (−1 to +1), latest headlines',s.symbols.map(sym=>{const hs=(P_.headlines||[]).filter(h=>(h.coins||[]).includes(sym));return[sym+' ('+hs.length+')',hs.length?hs.reduce((a,h)=>a+h.s,0)/hs.length:0]}),v=>f(v,2)),
+ poly:()=>bars('POLYMARKET TEAMS: P/L $ (live, or practice until live bets close)',(pb.strategies||[]).map(t=>{const tr=((pb.training||{}).teams||{})[t.team]||{};return[t.team+(t.bets?'':' (practice)'),t.bets?t.pnl:(tr.pnl||0)]}),usd),
+ engines:()=>bars('THE 8 ENGINES: HOW BUSY EACH STEP IS',[['1 scan',(s.pipe||{}).live||0],['2 analyse',(G.find(g=>g.group=='analyst')||{}).active||0],['3 research',((G.find(g=>g.group=='macro')||{}).active||0)+((G.find(g=>g.group=='pipe')||{}).active||0)],['4 flow',(s.feed||[]).length],['5 decide',((s.council||{}).counts||{}).auto||0],['6 risk',dd.rejected||0],['7 execute',s.open_trades.length],['8 learn',(s.lessons||[]).length]].map(r=>[r[0],r[1],'#3ef0ff']),v=>f(v,0)),
+ academy:()=>{const g=s.graduation;bars('EXAM: % RIGHT BY TEAM vs 50% COIN FLIP',g&&g.groups?Object.entries(g.groups).map(([k,v])=>[k,v.hit-.5,GC[k]]):[],v=>f((v+.5)*100,1)+'%')},
+ accounts:()=>{const sm=(s.smart_money||{}).views||{};bars('SMART MONEY: NET LONG(+) / SHORT(−) VIEWS PER SOURCE',Object.entries(sm).map(([k,v])=>[k,Object.values(v).reduce((a,b)=>a+b,0)]),v=>f(v,0))}};
+ (C[cur]||(()=>{$('pchartwrap').style.display='none'}))()}
+// ---------- CHARTS page: TradingView + live footprint
+const TVSYM={BTC:'BINANCE:BTCUSDT',ETH:'BINANCE:ETHUSDT',SOL:'BINANCE:SOLUSDT',XRP:'BINANCE:XRPUSDT',BNB:'BINANCE:BNBUSDT',DOGE:'BINANCE:DOGEUSDT',ADA:'BINANCE:ADAUSDT',LINK:'BINANCE:LINKUSDT',PAXG:'BINANCE:PAXGUSDT',NVDAX:'NASDAQ:NVDA',TSLAX:'NASDAQ:TSLA',SPYX:'AMEX:SPY',QQQX:'NASDAQ:QQQ'};
+let CSYM='BTC',TVL=false,FPWS=null,FP={};
+function charts(){const syms=S.symbols||['BTC'];$('symsel').innerHTML=syms.map(s=>'<button class="'+(s==CSYM?'on':'')+'" onclick="pickSym(\''+s+'\')">'+s+'</button>').join('');if($('tv').dataset.s!=CSYM)tvLoad();if(!FPWS)fpStart();fpDraw()}
+function pickSym(s){CSYM=s;FP={};if(FPWS){try{FPWS.onclose=null;FPWS.close()}catch(e){}FPWS=null}tvLoad();charts()}
+function tvLoad(){$('tv').dataset.s=CSYM;$('tv').innerHTML='<div id=tvw style="height:460px"></div>';const go=()=>{try{new TradingView.widget({container_id:'tvw',symbol:TVSYM[CSYM]||('BINANCE:'+CSYM+'USDT'),interval:'60',theme:'dark',style:'1',autosize:true,timezone:'Australia/Melbourne',allow_symbol_change:true,studies:['Volume@tv-basicstudies','RSI@tv-basicstudies'],locale:'en'})}catch(e){$('tv').innerHTML='<span class=mut>TradingView could not load here.</span>'}};
+ if(window.TradingView)return go();if(TVL)return setTimeout(go,1500);TVL=true;const sc=document.createElement('script');sc.src='https://s3.tradingview.com/tv.js';sc.onload=go;sc.onerror=()=>{$('tv').innerHTML='<span class=mut>TradingView could not load here.</span>'};document.head.appendChild(sc)}
+function fpStart(){const inst=CSYM+'-USDT';try{FPWS=new WebSocket('wss://ws.okx.com:8443/ws/v5/public');FPWS.onopen=()=>FPWS.send(JSON.stringify({op:'subscribe',args:[{channel:'trades',instId:inst}]}));
+ FPWS.onmessage=ev=>{try{const d=JSON.parse(ev.data);(d.data||[]).forEach(t=>{const p=+t.px,q=+t.sz*p,m=Math.floor(+t.ts/60000),step=fpStep(p),lv=Math.round(p/step)*step;const c=FP[m]=FP[m]||{lv:{},o:p,c:p,h:p,l:p};c.c=p;c.h=Math.max(c.h,p);c.l=Math.min(c.l,p);const L=c.lv[lv]=c.lv[lv]||[0,0];L[t.side=='buy'?0:1]+=q});const ks=Object.keys(FP).sort();while(ks.length>12)delete FP[ks.shift()]}catch(e){}};
+ FPWS.onclose=()=>{FPWS=null}}catch(e){$('fpinfo').textContent='live trade stream not reachable from this browser'}}
+setInterval(()=>{try{FPWS&&FPWS.readyState==1&&FPWS.send('ping')}catch(e){}},20000);
+function fpStep(p){const r=p*0.0006,e=Math.pow(10,Math.floor(Math.log10(r)));return [1,2,5,10].map(k=>k*e).find(v=>v>=r)||10*e}
+function fpDraw(){const c=$('fp');if(!c||cur!='charts')return;const x=c.getContext('2d'),W=c.width=c.clientWidth*DPR,H=c.height=480*DPR;x.clearRect(0,0,W,H);const ks=Object.keys(FP).sort();
+ if(!ks.length){x.fillStyle='#8b949e';x.font=(13*DPR)+'px ui-monospace,Menlo';x.fillText('waiting for live trades on '+CSYM+'…',12*DPR,30*DPR);return}
+ let lo=1e18,hi=0;ks.forEach(k=>{lo=Math.min(lo,FP[k].l);hi=Math.max(hi,FP[k].h)});const step=fpStep(hi);lo=Math.floor(lo/step)*step;hi=Math.ceil(hi/step)*step;const n=Math.max(1,Math.round((hi-lo)/step)+1),lh=Math.max(10*DPR,Math.min(26*DPR,(H-40*DPR)/n)),cw=(W-70*DPR)/ks.length;
+ const Y=p=>20*DPR+(hi-p)/step*lh;x.font=(9.5*DPR)+'px ui-monospace,Menlo';
+ for(let p=lo;p<=hi+step/2;p+=step){x.fillStyle='#8b949e';x.textAlign='right';x.fillText(px(p),W-4*DPR,Y(p)+3*DPR)}
+ ks.forEach((k,i)=>{const cd=FP[k],x0=i*cw+4*DPR;let mxv=1;Object.values(cd.lv).forEach(v=>mxv=Math.max(mxv,v[0],v[1]));
+  Object.entries(cd.lv).forEach(([lv,v])=>{const y=Y(+lv)-lh/2,delta=v[0]-v[1],a=Math.min(.85,.15+Math.abs(delta)/mxv);x.fillStyle=delta>=0?'rgba(63,185,80,'+a+')':'rgba(248,81,73,'+a+')';x.fillRect(x0,y+1,cw-6*DPR,lh-2);
+   if(lh>=14*DPR&&cw>60*DPR){x.fillStyle='#fff';x.textAlign='center';x.fillText(big(v[1])+' × '+big(v[0]),x0+(cw-6*DPR)/2,y+lh*.68)}});
+  x.strokeStyle=cd.c>=cd.o?'#3fb950':'#f85149';x.lineWidth=2*DPR;x.beginPath();x.moveTo(x0+(cw-6*DPR)/2,Y(cd.h));x.lineTo(x0+(cw-6*DPR)/2,Y(cd.l));x.stroke();
+  x.fillStyle='#8b949e';x.textAlign='center';x.fillText(new Date(k*60000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),x0+(cw-6*DPR)/2,H-6*DPR)});
+ x.textAlign='left';const tot=ks.reduce((a,k)=>{Object.values(FP[k].lv).forEach(v=>{a[0]+=v[0];a[1]+=v[1]});return a},[0,0]);
+ $('fpinfo').innerHTML='last '+ks.length+' min on OKX '+CSYM+'-USDT · bought <span class=up>$'+big(tot[0])+'</span> vs sold <span class=dn>$'+big(tot[1])+'</span> · each cell: sold × bought at that price (USD)'}
+setInterval(()=>{if(cur=='charts')fpDraw()},1000);
+
 function heat(){const s=S,gs=['scout','predictor','copy','macro','platform','pipe'],m={};(s.feed||[]).forEach(e=>{const g=PRE[e.agent[0]];if(!g)return;const k=e.symbol+'|'+g;m[k]=(m[k]||0)+e.direction*(e.conf||.5)});
  tbl('heat',['market'].concat(gs),s.symbols.map(sym=>['<b>'+sym+'</b>'].concat(gs.map(g=>{const v=m[sym+'|'+g]||0,a=Math.min(.9,Math.abs(v)/2.5);return '<div style="padding:8px 4px;border-radius:4px;background:'+(v>0?'rgba(63,185,80,'+a+')':v<0?'rgba(248,81,73,'+a+')':'#141927')+'">'+(v?(v>0?'+':'')+f(v,1):'·')+'</div>'}))))}
 function matrix(){const s=S;heat();const fa=s.fast||{};$('fastlog').innerHTML='<div class=stat style="margin-bottom:8px"><div><b class="big pp">'+(fa.decisions_min||0)+'</b><span>decisions in the last minute</span></div><div><b class=big>'+(fa.ms==null?'-':fa.ms+' ms')+'</b><span>time to decide</span></div><div><b class=big>'+(fa.actions_min||0)+'</b><span>actions in the last minute</span></div><div><b class=big>'+(fa.trades_hour||0)+'</b><span>trades this hour</span></div></div>'+(fa.actions||[]).map(a=>'<div><span class=mut>'+new Date(a.t*1000).toLocaleTimeString()+'</span> '+esc(a.text)+'</div>').join('')||'<span class=mut>'+(fa.ticks?fa.ticks+' fast checks so far, nothing needed doing yet.':'Starts once the academy is finished and live trading begins.')+'</span>';tbl('matrix',['market','chart price','pipe price','sources','24h','regime','scouts','predictors','pipe','quant score','final','decision','open'],
@@ -526,7 +597,7 @@ $('heads').innerHTML=P.headlines.map(h=>'<div><span class=mut>'+new Date(h.t*100
 const m=s.macro;$('macro').innerHTML=m?esc(JSON.stringify(m).slice(0,1500)):'Macro team is off.'}
 function poly(){const p=S.polybook;if(p){const k=(v,l,c)=>'<div><b class="big '+(c||'')+'">'+v+'</b><span>'+l+'</span></div>';
  $('poly').innerHTML=k('$'+f(p.equity),'paper bankroll')+k((p.pnl>=0?'+':'')+f(p.pnl),'profit / loss',cls(p.pnl))+k((p.open||[]).length,'bets open','pp')+k(p.closed,'bets closed')+k(p.hit_rate==null?'-':f(p.hit_rate*100,0)+'%','won')+k(p.markets||'-','markets scanned');
- tbl('polys',['team','bets','won','P/L','open','capital weight','status'],(p.strategies||[]).map(t=>['<b>'+t.team+'</b>',t.bets,t.win==null?'-':f(t.win*100,0)+'%','<span class='+cls(t.pnl)+'>'+f(t.pnl)+'</span>',t.open,'×'+f(t.weight,2),t.status=='benched'?'<span class=dn>benched</span>':'<span class=up>betting</span>']));
+ const pt=p.training||{};tbl('polys',['team','live bets','won','P/L','open','weight','status','practice bets','practice win','practice P/L'],(p.strategies||[]).map(t=>{const tr=(pt.teams||{})[t.team]||{};return['<b>'+t.team+'</b>',t.bets,t.win==null?'-':f(t.win*100,0)+'%','<span class='+cls(t.pnl)+'>'+f(t.pnl)+'</span>',t.open,'×'+f(t.weight,2),t.status=='benched'?'<span class=dn>benched</span>':'<span class=up>betting</span>',tr.bets==null?'<span class=mut>live only</span>':tr.bets,tr.win==null?'-':f(tr.win*100,0)+'%',tr.pnl==null?'-':'<span class='+cls(tr.pnl)+'>'+f(tr.pnl)+'</span>']}));
  tbl('polyt',['team','market','side','paid','why'],(p.open||[]).map(t=>[esc(t.strat||'-'),'<span class=w>'+esc(t.q)+'</span>',t.side,f(t.price,2),'<span class=mut>'+esc(t.why||'')+'</span>']));
  tbl('polyr',['team','market','side','P/L'],(p.recent||[]).map(t=>[esc(t.strat||'-'),'<span class=w>'+esc(t.q)+'</span>',t.side,'<span class='+cls(t.pnl)+'>'+f(t.pnl)+'</span>']))}
 if(P)tbl('preds',['venue','question','YES chance'],P.prediction.map(x=>[esc(x.provider),'<span class=w>'+esc(x.label)+'</span>',x.value==null?'-':f(x.value*100,0)+'%']))}
@@ -549,9 +620,21 @@ $('oss').innerHTML=['<b>TradingAgents</b> (Apache-2.0): analysts → bull/bear d
 'None of these, and not this app, has shown reliable profit. Paper results first; real money is your decision.'].map(t=>'<div>'+t+'</div>').join('')}
 function academy(){const g=S.graduation;$('grad').textContent=g?g.summary:'No exam yet.';const sd=S.selfdev||{reports:[],top:[],bottom:[]};
 $('sdstat').innerHTML='<div><b class="big pp">'+(sd.minutes||0)+'</b><span>minute upgrades</span></div><div><b class="big pp">'+sd.reports.length+'</b><span>hourly reports</span></div><div><b class=big>'+(sd.fast_rated||0)+'</b><span>publishers rated at 15 min</span></div><div><b class=big>'+((sd.sources_dropped||[]).length)+'</b><span>price sources dropped this minute'+((sd.sources_dropped||[]).length?': '+esc(sd.sources_dropped.join(', ')):'')+'</span></div><div><b class=big style="font-size:13px">'+(Object.entries(sd.pulse||{}).map(([k,v])=>k+' ×'+v).join(' ')||'-')+'</b><span>team pulse (voting power this minute)</span></div><div><b class=big>'+sd.publishers_rated+'</b><span>publishers with a track record</span></div><div><b class=big>'+sd.pending+'</b><span>headlines waiting to be graded (1h later)</span></div>';
-tbl('sdlog',['time','equity','hour P/L','news tracked / graded','what changed','team hit rates'],sd.reports.map(r=>[new Date(r.t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),'$'+f(r.equity),'<span class='+cls(r.hour_pnl)+'>'+f(r.hour_pnl)+'</span>',r.news_tracked+' / '+r.news_graded,'<span class=w>'+esc((r.settings_changed.concat(r.lessons)).join(' · ')||'no change needed')+(r.gate?' · gate '+r.gate[0]+'/'+r.gate[1]:'')+'</span>','<span class=mut>'+Object.entries(r.team_hit).map(([k,v])=>k+' '+f(v*100,0)+'%').join(' ')+'</span>']));
+tbl('sdlog',['time','type','equity','hour P/L','news tracked / graded','what changed','team hit rates'],sd.reports.map(r=>[new Date(r.t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),'<span class=pp>'+esc(r.kind||'hourly')+'</span>','$'+f(r.equity),'<span class='+cls(r.hour_pnl)+'>'+f(r.hour_pnl)+'</span>',r.news_tracked+' / '+r.news_graded,'<span class=w>'+esc((r.settings_changed.concat(r.lessons)).join(' · ')||'no change needed')+(r.gate?' · gate '+r.gate[0]+'/'+r.gate[1]:'')+'</span>','<span class=mut>'+Object.entries(r.team_hit).map(([k,v])=>k+' '+f(v*100,0)+'%').join(' ')+'</span>']));
 const pr=x=>[esc(x[0]),x[1]+' / '+x[2],f(x[1]/x[2]*100,0)+'%','×'+f(x[3],2)];tbl('pubtop',['publisher','right / judged','hit','weight'],sd.top.map(pr));tbl('pubbot',['publisher','right / judged','hit','weight'],sd.bottom.map(pr));
-tbl('gradg',['team','info'],g&&g.groups?Object.entries(g.groups).map(([k,v])=>[k,'<span class=mut>'+esc(JSON.stringify(v))+'</span>']):[])}
+tbl('gradg',['team','calls judged','right','beats chance?'],g&&g.groups?Object.entries(g.groups).map(([k,v])=>[k,v.n,f(v.hit*100,1)+'%',v.z>1.64?'<span class=up>yes (z '+f(v.z,1)+')</span>':'<span class=mut>not proven (z '+f(v.z,1)+')</span>']):[]);
+const gr=k=>g&&g.groups&&g.groups[k]?f(g.groups[k].hit*100,0)+'% right on the exam':'exam pending',sm=S.smart_money||{},pt=(S.polybook||{}).training||{},sd2=S.selfdev||{};
+const hist='~25 days of real hourly prices, then an exam on data it never saw';
+tbl('trainall',['department','how it trains','result'],[
+['SCOUTS',hist,gr('scout')],['ANALYSTS (60)',hist,'votes the market regime; judged inside every trade'],['QUANTS',hist+'; strategies re-tested every 2 hours live',gr('quant')],
+['PREDICTORS',hist,gr('predictor')],
+['SMART MONEY','replays the real history of OKX top traders, OKX/Bybit crowds, funding and fear & greed',(sm.history_points?sm.history_points+' history points · '+(sm.trained_positions||0)+' practice positions taken · ':'')+gr('copy')],
+['MACRO & POLYMARKET','9 betting teams replay a week of real hourly odds on the top markets',esc(pt.status||'-')+(pt.bets?' · '+pt.bets+' practice bets on '+pt.markets+' markets':'')],
+['MARKET PIPE & NEWS','headlines have no usable history, so they learn live: every headline graded 15 min and 1 h later',(sd2.publishers_rated||0)+' publishers rated (1 h) · '+(sd2.fast_rated||0)+' (15 min)'],
+['COUNCIL & RISK','gate calibrated on the academy’s own ideas, then every hour',S.council&&S.council.calibration?'calibrated on '+S.council.calibration.ideas+' ideas':'calibrates after the academy'],
+['TRADING DESKS',hist+'; capital follows profit per hour',(S.desks||[]).filter(d=>d.n>0).length+' desks traded'],
+['SELF-DEVELOPMENT','upgrades every minute and every hour',(sd2.minutes||0)+' minute upgrades · '+((sd2.reports||[]).length)+' hourly reports']]);
+if(pt.teams)tbl('polys',['team','bets (live)','won','P/L','open','capital weight','status','training bets','training win','training P/L'],(S.polybook.strategies||[]).map(t=>{const tr=pt.teams[t.team]||{};return['<b>'+t.team+'</b>',t.bets,t.win==null?'-':f(t.win*100,0)+'%','<span class='+cls(t.pnl)+'>'+f(t.pnl)+'</span>',t.open,'×'+f(t.weight,2),t.status=='benched'?'<span class=dn>benched</span>':'<span class=up>betting</span>',tr.bets==null?'<span class=mut>live only</span>':tr.bets,tr.win==null?'-':f(tr.win*100,0)+'%',tr.pnl==null?'-':'<span class='+cls(tr.pnl)+'>'+f(tr.pnl)+'</span>']}));}
 function accounts(){const s=S;const sm=s.smart_money||{views:{}};tbl('smt',['source'].concat(s.symbols),Object.entries(sm.views||{}).map(([k,v])=>['<b>'+esc(k)+'</b>'].concat(s.symbols.map(x=>v[x]>0?'<span class=up>LONG</span>':v[x]<0?'<span class=dn>SHORT</span>':'<span class=mut>·</span>'))));tbl('brk',['broker','ready','sent','failed','last'],(s.brokers||[]).map(b=>[esc(b.name),b.ready?'<span class=up>yes</span>':'<span class=mut>no</span>',b.sent,b.failed,esc(b.last)]));
 tbl('trd',['trader','trades','win','mean P/L','skill (conservative)'],s.traders.map(t=>[t.trader,t.n,f(t.wr*100,0)+'%',f(t.mean*100,2)+'%',f(t.wilson*100,0)+'%']));
 const p=s.polybook;$('polyacc').textContent=p?'bankroll $'+f(p.equity)+' ('+(p.pnl>=0?'+':'')+f(p.pnl)+')':'-'}

@@ -146,7 +146,7 @@ class SelfDev:
         return rep
 
     # ---------------------------------------------------------------- the hourly round
-    def hourly(self, cycle):
+    def hourly(self, cycle, kind="hourly"):
         e, m = self.e, self.e.market
         before = {k: getattr(e.cfg, k) for k in ("agg_threshold", "min_agents", "llm_weight", "risk_per_trade")}
         n_lessons = len(e.b.lessons(200))
@@ -166,7 +166,7 @@ class SelfDev:
         for a in e.swarm.agents.values():
             if a["active"] and a["n"] >= 10:
                 grp.setdefault(a["grp"], []).append(a["acc"])
-        rep = {"cycle": cycle, "t": time.time(),
+        rep = {"cycle": cycle, "t": time.time(), "kind": kind,
                "equity": round(e.port.last_equity, 2),
                "hour_pnl": (e.b.q("SELECT pnl FROM hours ORDER BY hour DESC LIMIT 1") or [{"pnl": 0}])[0]["pnl"],
                "news_tracked": new, "news_graded": graded, "publishers_rated": len(rated),

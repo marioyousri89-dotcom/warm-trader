@@ -40,6 +40,80 @@ class LiveTraders:
         self.traders = [(n, None) for n in self.NAMES]          # same shape as SimTraders (name, hidden skill)
         self.last = {}                                           # name -> {symbol: side} last views, for the UI
         self.errors = {}
+        self.hist = {}                                           # (name, sym) -> sorted [(ts_seconds, side)] for the academy
+        self.trained = 0                                         # positions taken while replaying history
+
+    # ---------------------------------------------------------------- history, so the academy can train the copy team
+    def preload(self, symbols):
+        """Fetch the real history each source publishes (OKX ratios ~ hourly, Bybit 500 h, funding 100 x 8 h,
+        fear & greed 60 days). Sources with no history (premiums, news) only learn live."""
+        side = lambda r, hi=1.08, lo=0.92: 1 if r > hi else -1 if r < lo else 0
+
+        def okx(kind, sym):
+            base = "https://www.okx.com/api/v5/rubik/stat"
+            url = {"okx_all_accounts": f"{base}/contracts/long-short-account-ratio?ccy={sym}&period=1H",
+                   "okx_takers": f"{base}/taker-volume?ccy={sym}&instType=CONTRACTS&period=1H",
+                   "okx_top_accounts": f"{base}/contracts/long-short-account-ratio-contract-top-trader?instId={sym}-USDT-SWAP&period=1H",
+                   "okx_top_positions": f"{base}/contracts/long-short-position-ratio-contract-top-trader?instId={sym}-USDT-SWAP&period=1H"}[kind]
+            out = []
+            for r in _get(url)["data"]:
+                if kind == "okx_takers":
+                    sell, buy = float(r[1]), float(r[2])
+                    out.append((int(r[0]) / 1000, side(buy / sell if sell else 1.0)))
+                else:
+                    out.append((int(r[0]) / 1000, side(float(r[1]))))
+            return out
+
+        def bybit(sym):
+            d = _get(f"https://api.bybit.com/v5/market/account-ratio?category=linear&symbol={sym}USDT&period=1h&limit=500")
+            return [(int(x["timestamp"]) / 1000, 1 if float(x["buyRatio"]) > float(x["sellRatio"]) * 1.08 else
+                     -1 if float(x["sellRatio"]) > float(x["buyRatio"]) * 1.08 else 0) for x in d["result"]["list"]]
+
+        def funding(sym):
+            d = _get(f"https://www.okx.com/api/v5/public/funding-rate-history?instId={sym}-USDT-SWAP&limit=100")["data"]
+            return [(int(x["fundingTime"]) / 1000, -1 if float(x["fundingRate"]) > 0.0001 else 1 if float(x["fundingRate"]) < -0.00005 else 0)
+                    for x in d]
+
+        fg = []
+        try:
+            fg = [(int(x["timestamp"]), 1 if int(x["value"]) < 30 else -1 if int(x["value"]) > 70 else 0)
+                  for x in _get("https://api.alternative.me/fng/?limit=60")["data"]]
+        except Exception as ex:
+            self.errors["fear_greed_history"] = str(ex)[:60]
+        jobs = []
+        for sym in symbols:
+            for k in ("okx_all_accounts", "okx_takers", "okx_top_accounts", "okx_top_positions"):
+                jobs.append((k, sym, lambda k=k, sym=sym: okx(k, sym)))
+            jobs.append(("bybit_crowd", sym, lambda sym=sym: bybit(sym)))
+            jobs.append(("funding_fade", sym, lambda sym=sym: funding(sym)))
+
+        def run(j):
+            try:
+                return j[0], j[1], sorted(j[2]())
+            except Exception as ex:
+                self.errors[j[0] + "_history"] = f"{type(ex).__name__}: {str(ex)[:50]}"
+                return j[0], j[1], []
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for name, sym, rows in ex.map(run, jobs):
+                if rows:
+                    self.hist[(name, sym)] = rows
+        if fg:
+            for sym in symbols:
+                self.hist[("fear_greed", sym)] = sorted(fg)
+        return sum(len(v) for v in self.hist.values())
+
+    def _hist_side(self, name, sym, ts):
+        rows = self.hist.get((name, sym))
+        if not rows:
+            return 0
+        best = None
+        for t, s_ in rows:
+            if t <= ts:
+                best = (t, s_)
+            else:
+                break
+        span = 86400 * 1.5 if name == "fear_greed" else 9 * 3600 if name == "funding_fade" else 2 * 3600
+        return best[1] if best and ts - best[0] <= span else 0
 
     # ---------------------------------------------------------------- one source = one 'trader'
     def _okx_ratio(self, kind, sym):
@@ -103,15 +177,19 @@ class LiveTraders:
     # ---------------------------------------------------------------- same interface as SimTraders.step
     def step(self, cycle):
         e = self.e
-        if e.phase != "live":                 # history replay: today's crowd data says nothing about old candles
-            return
         m, b = e.market, e.b
+        replay = e.phase != "live"            # academy: use the source's real history at that candle's time
         for p in b.q("SELECT * FROM trader_pos WHERE status='open' AND close_cycle<=?", (cycle,)):
             px = m.last(p["symbol"])
             b.x("UPDATE trader_pos SET exit=?,pnl=?,status='closed' WHERE id=?", (px, p["side"] * (px / p["entry"] - 1), p["id"]))
         jobs = [(n, s) for n in self.NAMES for s in m.symbols]
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            views = dict(zip(jobs, ex.map(lambda j: self._view(*j), jobs)))
+        if replay:
+            if not self.hist:
+                return
+            views = {(n, s): self._hist_side(n, s, m.candles[s][-1].get("t", 0)) for n, s in jobs}
+        else:
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                views = dict(zip(jobs, ex.map(lambda j: self._view(*j), jobs)))
         for (n, s), side in views.items():
             self.last.setdefault(n, {})[s] = side
             if not side:
@@ -120,6 +198,10 @@ class LiveTraders:
             if not has:
                 b.x("INSERT INTO trader_pos(trader,symbol,side,entry,open_cycle,close_cycle,status) VALUES(?,?,?,?,?,?,'open')",
                     (n, s, side, m.last(s), cycle, cycle + H))
+                if replay:
+                    self.trained += 1
 
     def state(self):
-        return {"views": self.last, "errors": self.errors}
+        return {"views": self.last, "errors": self.errors, "trained_positions": self.trained,
+                "history_points": sum(len(v) for v in self.hist.values()),
+                "sources_with_history": sorted({n for n, _ in self.hist})}

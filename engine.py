@@ -94,6 +94,11 @@ class Engine:
         if live:                            # real smart-money/crowd sources become the copy team's "traders"
             from livetraders import LiveTraders
             self.traders = LiveTraders(self)
+            try:
+                n = self.traders.preload(self.market.symbols)      # real crowd history so the academy trains the copy team
+                print(f"[academy] smart-money history loaded: {n} data points from {len(self.traders.hist)} source/market pairs")
+            except Exception as ex:
+                print("[academy] smart-money history failed:", str(ex)[:100])
         else:
             self.traders = SimTraders(self.b, self.market, cfg.seed + 4)
         self.swarm = Swarm(cfg, self.b)
@@ -258,6 +263,8 @@ class Engine:
         from council import Council
         if self.live:                           # live: self-development every hour from now on
             cfg.improve_every, cfg.quant_every = 1, 2
+        import time as _tm
+        self.live_since = _tm.time()            # first 12 live hours: full self-review every 15 minutes
         old = self.council
         self.council = Council(self)            # live counts start clean after school
         self.council.human_review = old.human_review
@@ -539,6 +546,16 @@ class Engine:
                 self.selfdev.minute(live)                          # light self-upgrade every minute
             except Exception as ex:
                 acts.append(f"minute upgrade failed: {str(ex)[:60]}")
+        since = getattr(self, "live_since", None)
+        if since and _t.time() - since < 12 * 3600 and _t.time() - self.fast.get("q_t", since) >= 900:
+            self.fast["q_t"] = _t.time()                           # early days: learn 4x faster
+            try:
+                if not self.swarm.frozen:
+                    self.improvers.run(c)
+                self.selfdev.hourly(c, kind="15-min review (first 12 h)")
+                acts.append("15-minute self-review done")
+            except Exception as ex:
+                acts.append(f"15-min review failed: {str(ex)[:60]}")
         if _t.time() - self.fast.get("poly_t", 0) >= 60 and hasattr(self.poly, "tick"):
             self.fast["poly_t"] = _t.time()
             self.poly.tick()                                       # Polymarket desk re-checks every minute

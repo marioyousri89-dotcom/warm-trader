@@ -45,8 +45,80 @@ class PolyDesk:
         self.last_fetch = 0.0
         self.lock = threading.Lock()
         self.synthetic = False
+        self.training = {"status": "waiting", "markets": 0, "bets": 0, "teams": {}}
         if start:
             threading.Thread(target=self._loop, daemon=True).start()
+            threading.Thread(target=self.train, daemon=True).start()
+
+    # ---------------------------------------------------------------- ACADEMY for the nine teams: replay a week of real odds
+    def train(self, n_markets=60):
+        """Pull one week of hourly odds for the top markets (Polymarket CLOB price history) and let every team
+        bet on it as if it were live. Their training record seeds their capital weight; live results take over."""
+        try:
+            self.training["status"] = "downloading history"
+            url = ("https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=%d&order=volume24hr&ascending=false" % n_markets)
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 SwarmTrader"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                rows = json.loads(r.read())
+            series = []
+            for r in rows:
+                try:
+                    tok = json.loads(r["clobTokenIds"])[0]
+                    end = r.get("endDate")
+                    end_ts = time.mktime(time.strptime(end[:19], "%Y-%m-%dT%H:%M:%S")) if end else None
+                    u = f"https://clob.polymarket.com/prices-history?market={tok}&interval=1w&fidelity=60"
+                    with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"}), timeout=15) as h:
+                        hist = [(float(x["t"]), float(x["p"])) for x in json.loads(h.read()).get("history", [])]
+                    if len(hist) >= 24:
+                        series.append((str(r.get("question", ""))[:120], hist, end_ts))
+                except Exception:
+                    continue
+            self.training["status"] = "training"
+            ts = {s_: {"n": 0, "w": 0, "pnl": 0.0} for s_ in STRATS}
+            for q, hist, end_ts in series:
+                open_ = {}
+                for i in range(2, len(hist)):
+                    t, p = hist[i]
+                    p1 = hist[i - 1][1]
+                    d1 = p - p1
+                    days = (end_ts - t) / 86400 if end_ts else None
+                    for k, pos in list(open_.items()):          # close after 6 hours
+                        if t - pos[0] >= 6 * 3600 or i == len(hist) - 1:
+                            val = p if pos[1] == "YES" else 1 - p
+                            pnl = 15.0 / pos[2] * (val - 0.005 - pos[2])
+                            st = ts[k]
+                            st["n"] += 1
+                            st["w"] += pnl > 0
+                            st["pnl"] += pnl
+                            del open_[k]
+                    if p <= 0.01 or p >= 0.99:
+                        continue
+                    ideas = []
+                    if 0.03 <= abs(d1) < 0.08:
+                        ideas.append(("momentum", "YES" if d1 > 0 else "NO"))
+                    if abs(d1) >= 0.10:
+                        ideas.append(("reversion", "NO" if d1 > 0 else "YES"))
+                    if p < 0.07:
+                        ideas.append(("longshot", "NO"))
+                    if p > 0.88 and days is not None and 0 < days < 3:
+                        ideas.append(("favourite", "YES"))
+                    if 0.6 <= p <= 0.85 and days is not None and 3 <= days <= 30 and i >= 6 and \
+                            max(x for _, x in hist[i - 6:i + 1]) - min(x for _, x in hist[i - 6:i + 1]) < 0.03:
+                        ideas.append(("carry", "YES"))
+                    for k, side in ideas:
+                        if k in open_ or open_:                  # one position per market, like live
+                            continue
+                        px = (p if side == "YES" else 1 - p) + 0.005
+                        if 0.02 < px < 0.97:
+                            open_[k] = (t, side, px)
+            self.train_stats = ts
+            self.training = {"status": "trained", "markets": len(series), "bets": sum(v["n"] for v in ts.values()),
+                             "teams": {k: {"bets": v["n"], "win": round(v["w"] / v["n"], 3) if v["n"] else None,
+                                           "pnl": round(v["pnl"], 2)} for k, v in ts.items()},
+                             "not_trainable": ["cross_venue", "news", "volume", "crypto_link"],
+                             "note": "a week of real hourly odds; teams that need other venues, news or volume history learn live"}
+        except Exception as ex:
+            self.training["status"] = f"training failed: {type(ex).__name__}: {str(ex)[:60]}"
 
     # ---------------------------------------------------------------- data
     def _loop(self):
@@ -154,8 +226,12 @@ class PolyDesk:
 
     def _weight(self, s):
         st = self.stats[s]
-        if st["n"] < 8:
-            return 1.0
+        if st["n"] < 8:                                    # not enough live bets yet: use the training record
+            tr = getattr(self, "train_stats", {}).get(s)
+            if not tr or tr["n"] < 8:
+                return 1.0
+            wr = tr["w"] / tr["n"]
+            return max(0.4, min(1.6, 1.0 + (wr - 0.5) * 2 + (0.3 if tr["pnl"] > 0 else -0.2)))
         wr = st["w"] / st["n"]
         return max(0.3, min(2.0, 1.0 + (wr - 0.5) * 3 + (0.5 if st["pnl"] > 0 else -0.3)))
 
@@ -222,4 +298,4 @@ class PolyDesk:
                     "strategies": [{"team": s, "bets": st["n"], "win": round(st["w"] / st["n"], 3) if st["n"] else None,
                                     "pnl": round(st["pnl"], 2), "open": st["open"], "weight": round(self._weight(s), 2),
                                     "status": "benched" if st["benched"] else "betting"} for s, st in self.stats.items()],
-                    "status": "betting"}
+                    "status": "betting", "training": self.training}
