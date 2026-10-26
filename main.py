@@ -57,7 +57,10 @@ def main():
     if os.environ.get("MARKET_PIPE", "1") != "0":
         from pipe import MarketPipe
         eng.pipe = MarketPipe()
-        eng.market.event = eng.pipe.event          # news/prices wake the fast lane within ~1 s
+        eng.market.event = eng.pipe.event          # news wakes the fast lane within ~1 s
+        if eng.live:
+            import ws_prices
+            ws_prices.start(eng.pipe, list(eng.market.symbols))   # streaming prices, tick by tick
         print(f"[pipe] market pipe started: {len(eng.pipe.providers)} providers, {len(eng.pipe.declared)} feeds requested")
 
         def _pipe_log():

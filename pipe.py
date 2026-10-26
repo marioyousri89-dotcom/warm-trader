@@ -399,8 +399,7 @@ class MarketPipe:
                 best[c] = (rk, pair, px, chg, vol)
         for c, (_, pair, px, chg, vol) in best.items():
             self._put(f"{name}:{c}", "crypto", name, f"{c} on {name} ({pair})", px, chg, {"vol": vol})
-        if best:
-            self.event.set()
+        pass
         return len(best)
 
     def _deriv(self, name, url, fn):
@@ -634,7 +633,7 @@ class MarketPipe:
         last_fetch = max((p["last"] for p in provs if p["ok"]), default=0)
         return {"declared": len(self.declared), "live": len(feeds), "by_cat": by,
                 "publishers": len(self.publishers), "latest": latest, "last_fetch": last_fetch,
-                "lanes": self.lanes(),
+                "lanes": self.lanes(), "stream": getattr(self, "ws_stats", None),
                 "sources": len([p for p in ok if not p["name"].startswith("gnews:")]) + len(self.publishers),
                 "news_per_hour": self.news_mood(hours=1)["n"],
                 "providers_ok": sum(1 for p in provs if p["ok"]), "providers": len(provs),

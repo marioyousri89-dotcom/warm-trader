@@ -1,3 +1,5 @@
 # Core swarm: Python standard library only (3.9+).
 anthropic>=0.40      # Claude as chief strategist, world-events analyst, engineer, chat
 # moomoo-api         # optional: only for the moomoo SIMULATED-account mirror (also needs the OpenD gateway running)
+
+websocket-client

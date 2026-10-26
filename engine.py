@@ -91,14 +91,22 @@ class Engine:
         self.fast_last = {}
         if live:
             self.market.on_wait = self.fast_tick
-        self.traders = None if live else SimTraders(self.b, self.market, cfg.seed + 4)
+        if live:                            # real smart-money/crowd sources become the copy team's "traders"
+            from livetraders import LiveTraders
+            self.traders = LiveTraders(self)
+        else:
+            self.traders = SimTraders(self.b, self.market, cfg.seed + 4)
         self.swarm = Swarm(cfg, self.b)
         self.agg, self.risk, self.port = Aggregator(), Risk(cfg), Portfolio(cfg, self.b)
         self.llm = llm or LLM(cfg.model, cfg.use_llm)
         self.improvers = Improvers(self)
         self.desks = DeskManager(self)
         self.macro = None                   # set by main/macro module
-        self.poly = PolyBook(cfg, self.b)
+        if live:                            # nine-team Polymarket desk on the top ~150 markets (paper only)
+            from polydesk import PolyDesk
+            self.poly = PolyDesk(self)
+        else:
+            self.poly = PolyBook(cfg, self.b)
         self.exec = make_executor()
         self.session_mult = dict(self.b.kv_get("session_mult") or {}) if cfg.keep_brain else {}
         self.mirror = False               # turned on only after the academy, in the live phase
@@ -468,11 +476,17 @@ class Engine:
         m, c, p = self.market, self.market.cycle, self.port
         live = {}
         feeds = self.pipe._live()                                 # read the shared pipe once per second
+        now_t = _t.time()
         for s in m.symbols:
             cc = self.pipe.consensus(s, feeds)
             ref = m.candles[s][-1]["c"]
             if cc and cc["sources"] >= 3 and abs(cc["price"] / ref - 1) < 0.08:
                 live[s] = cc["price"]
+            for src in ("okx-live", "bybit-live"):                # streaming tick (milliseconds old) wins if sane
+                f = self.pipe.feeds.get(f"{src}:{s}")
+                if f and now_t - f["ts"] < 5 and abs(f["value"] / (live.get(s) or ref) - 1) < 0.02:
+                    live[s] = f["value"]
+                    break
         if not live:
             return
         for s, px in live.items():
@@ -519,6 +533,9 @@ class Engine:
                         acts.append(f"NEWS DESK opened {sym} {'LONG' if side > 0 else 'SHORT'}: {note[:60]}")
                     else:
                         acts.append(f"news idea on {sym} stopped by council/risk")
+        if _t.time() - self.fast.get("poly_t", 0) >= 60 and hasattr(self.poly, "tick"):
+            self.fast["poly_t"] = _t.time()
+            self.poly.tick()                                       # Polymarket desk re-checks every minute
         self.b.flush()
         self.fast["ticks"] += 1
         self.fast["ms"] = int((_t.time() - t0) * 1000)
@@ -615,6 +632,7 @@ class Engine:
             "council": self.council.state(),
             "selfdev": self.selfdev.state(),
             "fast": {k: v for k, v in self.fast.items() if not k.startswith("_")},
+            "smart_money": self.traders.state() if hasattr(self.traders, "state") else None,
             "symbols": list(m.symbols), "prices": {s: round(m.last(s), 6) for s in m.symbols},
             "agents_total": len(agents), "agents_active": sum(1 for a in agents if a["active"]),
             "equity": round(last_eq, 2), "start": cfg.start_equity, "pnl": round(last_eq - cfg.start_equity, 2),
